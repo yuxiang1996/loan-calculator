@@ -145,6 +145,7 @@
   .rows tr.minor td { color: var(--muted); font-size: 13px; padding-top: 4px; }
   .rows tr.minor td:last-child { font-weight: 500; }
   .rows tr.total td { background: #f8f8f6; font-weight: 700; border-bottom: 0; font-size: 15px; }
+  .rows tr.grand td { background: var(--sale-soft); color: var(--sale); font-size: 16px; border-top: 2px solid var(--sale); }
   .rows tr.hl td { background: #fcf6e9; }
   .rows tr.good td { background: #e7f4f0; color: var(--sale); }
   .rows tr.total.hl td { color: #8a5a00; }
@@ -905,6 +906,7 @@
           ${s.share != null ? row('Cash proceeds', money(s.cash), 'total') : ''}
           ${row(s.share != null ? "Cash to client (her share)" : 'Cash proceeds', money(s.clientCash), 'total', s.rule50 && s.mustUse > 0 ? `${money(s.mustUse)} must go into the next flat (2nd HDB loan)` : '')}
           ${row('CPF available for next home', money(c.poolStart), 'total', `Incl. ${money(s.cpfBack)} refunded from the sale`)}
+          ${row('Total for next home', money(Math.max(0, s.clientCash) + c.poolStart), 'total grand', `Cash ${money(Math.max(0, s.clientCash))} + CPF ${money(c.poolStart)}`)}
         </table>
         ${more('sale', `
           ${row('Selling price', money(s.price))}
