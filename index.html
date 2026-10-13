@@ -324,7 +324,7 @@
     n: 1, married: true,
     b: [blankBuyer(), blankBuyer()],
     buy: { type: 'private', mode: 'resale', price: '', val: '', lease: '', loan: 'bank', rate: '2.0', stress: '4.0', tenure: '', grants: '', keep: '', legal: null, hdbLegal: false, valFee: null, other: '', levyOn: false, levyType: '4', levySingle: false, levy: null, cashUse: '' },
-    sale: { on: false, type: 'hdb', owner: 'both', price: '', loan: '', cpf: [{ p: '', i: '' }, { p: '', i: '' }], first: true, repaid: true, hdb2nd: true, bought: '', legal: null, hdbLegal: false, penalty: '', share: '' },
+    sale: { on: false, type: 'hdb', owner: 'both', price: '', loan: '', cpf: [{ p: '', i: '' }, { p: '', i: '' }], first: true, repaid: true, hdb2nd: true, contra: true, bought: '', legal: null, hdbLegal: false, penalty: '', share: '' },
   });
   let state;
   try {
@@ -480,6 +480,7 @@
         ${toggle('sale.first', 'Sell first', 'Buyer exercises your OTP before you exercise the new one. Avoids ABSD on the home sold')}
         ${toggle('sale.repaid', 'Loan repaid before new loan', 'If not, it counts as an outstanding loan. LTV drops to 45%')}
         ${hdbLoan ? toggle('sale.hdb2nd', 'This will be a 2nd HDB loan', 'HDB then uses the CPF refund and up to 50% of cash proceeds to cut the loan') : ''}
+        ${hdbLoan ? toggle('sale.contra', 'Same-day completion (HDB contra)', 'Sale and purchase complete together. The sale’s CPF refund then can’t pay stamp duty or legal fees. Turn off if the sale completes first and the refund is already in OA') : ''}
       </div>`;
   }
 
@@ -681,7 +682,7 @@
       const cpfCap = base * leaseFactor;
       // CPF pays stamp duty and legal fees first (CPF reimburses them at completion), then the downpayment.
       const cpfPayable = BSD + ABSDamt + legalBuy;
-      const feeCap = hdbLoan && sale ? Math.max(0, Math.min(cpfCapIn, poolStart - sale.cpfBack)) : cpfCapIn;
+      const feeCap = hdbLoan && sale && sl.contra ? Math.max(0, Math.min(cpfCapIn, poolStart - sale.cpfBack)) : cpfCapIn;
       const cpfFees = Math.min(pool, cpfPayable, feeCap);
       pool -= cpfFees;
       let cpfDown = Math.max(0, Math.min(D - minCash, cpfCap, pool));
@@ -725,7 +726,8 @@
         const maxPrice = Math.floor(lo / 1000) * 1000;
         const f = fund(maxPrice, maxPrice, poolStart);
         const cpfIdle = f.poolLeft;
-        const limit = cpfIdle > 1000 && f.minCash > 0 && f.cashNeeded >= cashAvail - 1000 ? 'mincash' : 'all';
+        const cashBound = f.cashNeeded >= cashAvail - 1000;
+        const limit = cpfIdle > 1000 && f.minCash > 0 && cashBound ? 'mincash' : f.cashCut > 0 && cashBound ? 'forced' : 'all';
         budget = { maxPrice, f, cpfIdle, limit };
       } else budget = { maxPrice: 0, f: fund(0, 0, poolStart), cpfIdle: poolStart, limit: 'fees' };
     }
@@ -750,6 +752,7 @@
     const msrUsed = income ? (instStress + otherProp) / income : 0;
 
     // ----- Flags -----
+    const c_feesCashShort = a => cashAvail < a.cashNeeded - 0.5 && cashAvail - cashFloor < a.cashFees;
     const hh = state.n === 1 ? 'single' : 'family';
     if (hdb && B.every(b => b.cit === 'fr')) flags.push(['warn', 'Foreigners cannot buy an HDB flat. At least one buyer must be a Singapore Citizen or PR.']);
     if (hdb && state.n === 1 && B[0].cit === 'sc' && has(B[0].age) && ages[0] < 35) flags.push(['warn', 'Singles must be at least 35 to buy a resale HDB flat.']);
@@ -768,6 +771,7 @@
       if (grossTotal > EC_CEILING) flags.push(['warn', `Income of ${money(grossTotal)} is above the EC ceiling of $16,000 ($18,000 only for EC sites tendered from 24 Aug 2026).`]);
       if (sl.on && sl.type === 'private') flags.push(['warn', 'Private owners must wait 30 months after selling before buying a new EC.']);
     }
+    if (at && cashFloor > 0 && c_feesCashShort(at)) flags.push(['warn', `Cash to use covers the ${money(cashFloor)} the 2nd HDB loan rule puts into the price, but not the ${money(at.cashFees)} of fees paid in cash on top.${sl.contra ? ' On a same-day move the sale’s CPF refund can’t pay them; if the sale completes first, turn off same-day completion.' : ''}`]);
     if (cashUseIn != null && cashUseIn < cashFloor) flags.push(['warn', `2nd HDB loan: at least <b>${money(cashFloor)}</b> of the sale cash must go into the flat, so cash to use can't be lower than that.`]);
     if (sale && sale.share != null) flags.push(['info', `Using the client's share of cash proceeds (${money(sale.share)}) instead of the whole sale. ${sale.rule50 ? `The 2nd HDB loan rule applies to her share: she keeps ${money(sale.keepCash)}.` : ''}`]);
     if (cpfUseIn != null && cpfUseIn < cpfMin) flags.push(['warn', `With an HDB loan each buyer can keep at most $20,000 in OA, so at least <b>${money(cpfMin)}</b> of CPF must go into the flat.`]);
@@ -871,6 +875,7 @@
     if (c.budget) {
       const b = c.budget, f = b.f;
       const limitTxt = b.limit === 'mincash' ? `Limited by cash — ${pct(c.minCashPct, 0)} of price must be cash`
+        : b.limit === 'forced' ? `Limited by cash — ${money(c.cashFloor)} must go into the price (2nd HDB loan), fees need cash on top`
         : b.limit === 'fees' ? 'Not enough cash for the fees'
         : `All loan, CPF and cash used · loan capped by ${f.binding === 'LTV' ? `LTV (${pct(c.ltv, 0)})` : 'income'}`;
       html += `<div class="card budget"><div class="card-head"><span>Max affordability</span><em>${typeLbl}</em></div>
@@ -939,7 +944,7 @@
     updateDock(c); buildReport(c);
   }
   // How stamp duty and legal fees get paid (HDB acceptance letter, IRAS, CPF Board, HDB contra terms).
-  const saleRefundBlocked = c => c.hdbLoan && !!c.sale;
+  const saleRefundBlocked = c => c.hdbLoan && !!c.sale && state.sale.contra;
   const dutyTag = c => c.hdb ? (c.hdbLoan ? `HDB deducts it from CPF${saleRefundBlocked(c) ? ' — existing OA, not the sale refund' : ''}` : 'CPF or cash — your lawyer arranges it')
     : c.fresh ? 'CPF or cash' : 'Cash within 14 days; CPF reimburses at completion';
   const legalTag = c => saleRefundBlocked(c) ? 'CPF or cash — not the sale refund' : 'CPF or cash';
