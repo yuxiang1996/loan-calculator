@@ -400,7 +400,7 @@
         ${numField(`b.${i}.age`, 'Age', 'yrs', { ph: '35' })}
         ${selectField(`b.${i}.cit`, 'Citizenship', [['sc', 'Citizen (SC)'], ['spr', 'PR'], ['fr', 'Foreigner']])}
         ${moneyField(`b.${i}.fixed`, 'Fixed income / month', { hint: 'Gross, before CPF' })}
-        ${moneyField(`b.${i}.variable`, 'Variable / month', { hint: 'Bonus, commission, rent. 70% counted' })}
+        ${moneyField(`b.${i}.variable`, 'Variable / month', { hint: 'Bonus, commission, rent — 12-month average. 70% counted' })}
         ${moneyField(`b.${i}.oa`, 'CPF OA balance')}
         ${moneyField(`b.${i}.cash`, 'Cash savings', { hint: 'For the next home' })}
         ${moneyField(`b.${i}.debts`, 'Other debts / month', { full: true, hint: 'Car, personal, study loans, card minimums. Not home loans' })}
@@ -559,7 +559,9 @@
     const ages = B.map(b => num(b.age));
     const agesKnown = B.every(b => has(b.age));
     const gross = B.map(b => num(b.fixed) + num(b.variable));
-    const assessed = B.map(b => num(b.fixed) + (hdbLoan ? 1 : 0.7) * num(b.variable));
+    // MAS requires banks to count at most 70% of variable income. HDB averages 12 months and excludes bonuses,
+    // so the same 70% is applied to HDB loans to avoid over-quoting.
+    const assessed = B.map(b => num(b.fixed) + 0.7 * num(b.variable));
     const income = sum(assessed), grossTotal = sum(gross);
     const iwaa = grossTotal > 0 ? sum(ages.map((a, i) => a * gross[i])) / grossTotal : sum(ages) / ages.length;
     const youngest = Math.min(...ages);
@@ -832,7 +834,7 @@
     if (sl.on) flags.push(['info', 'Sale proceeds and the CPF refund arrive only when the sale completes. The deposit and stamp duty fall due earlier, so plan that cash first.']);
 
     return { B, hdb, ec, hdbLoan, fresh, iwaa, youngest, agesKnown, income, grossTotal, tenure, autoTenure, tenureHint, cap75, capMax, lowTier,
-      ltv, minCashPct, stress, rate, incomeLoan, incomeLoanR, incomeRule, loansOut, leaseFactor, absdRate, absdNote, absdRefund,
+      ltv, minCashPct, stress, rate, incomeLoan, incomeLoanR, incomeRule, assessed, tdsrRoom, msrRoom, allowance, useMSR, loansOut, leaseFactor, absdRate, absdNote, absdRefund,
       levy, levyAuto, cashDefault, cashFloor, cashUseIn, downCap, oaBy, oaTotal, grants, keep, poolStart, cpfMin, cpfUseIn, cpfLimit, savings, saleCash, cashAvail, legalBuy, otherBuy, owners,
       at, budget, topUp, shortfall, deposit, depositLbl, dutyUpfront, upfront, inst, instStress, tdsrUsed, msrUsed, otherDebt, otherProp, sale, flags };
   }
@@ -873,10 +875,24 @@
           ${row('Monthly instalment', money(c.inst), 'total', `At ${c.rate}%${c.hdbLoan ? ' fixed' : ''} over ${yrs(c.tenure)}`)}
         </table>
         ${more('loan', `
+          <tr class="sub"><td colspan="2">How the loan is worked out</td></tr>
+          ${c.B.map((b, i) => {
+            const who = state.n > 1 ? `Buyer ${i + 1} ` : '';
+            return row(`${who}fixed income`, money(num(b.fixed))) +
+              (num(b.variable) ? row(`${who}variable income`, money(0.7 * num(b.variable)), '', `${money(num(b.variable))} × 70% (30% haircut)`) : '');
+          }).join('')}
+          ${row('Income counted', money(c.income), 'total', c.hdbLoan ? 'HDB excludes bonuses; 70% of commission or rent' : 'Per MAS rules')}
+          ${c.hdbLoan || c.useMSR ? row('× MSR 30%', money(0.3 * c.income), '', 'Home loan instalments cap') : ''}
+          ${c.hdbLoan || c.useMSR ? (c.otherProp ? row('Less other home loans', money(-c.otherProp)) : '') : ''}
+          ${!c.hdbLoan ? row('× TDSR 55%', money(0.55 * c.income), '', 'All debts cap') : ''}
+          ${!c.hdbLoan && (c.otherDebt + c.otherProp) ? row('Less other debts and home loans', money(-(c.otherDebt + c.otherProp)), '', 'from the TDSR cap') : ''}
+          ${row('Max monthly instalment', money(Math.max(0, c.allowance)), 'total', !c.hdbLoan && c.useMSR ? `Lower of MSR ${money(c.msrRoom)} and TDSR ${money(c.tdsrRoom)}` : (c.hdbLoan || c.useMSR) ? 'MSR' : 'TDSR')}
+          ${row('Loan this repays', money(c.incomeLoan), 'total', `${money(Math.max(0, c.allowance))}/mth at ${c.stress}% stress rate over ${yrs(c.tenure)}`)}
+          ${at ? row('Loan by LTV', money(at.ltvLoan), '', `${pct(c.ltv, 1)} of ${at.cov ? 'valuation' : 'price'}`) : ''}
+          ${at ? row('Max loan (the lower)', money(at.maxLoan), 'total', at.binding === 'LTV' ? 'LTV limit' : 'Income limit') : ''}
+          <tr class="sub"><td colspan="2">Loan terms</td></tr>
           ${row('Loan tenure', yrs(c.tenure), '', c.agesKnown ? `${state.n > 1 ? 'Income-weighted' : 'Buyer'} age ${c.iwaa.toFixed(1)}` : '')}
           ${row('Loan-to-value', pct(c.ltv, 1), '', c.hdbLoan ? 'HDB loan' : c.loansOut ? `${c.loansOut === 1 ? '2nd' : '3rd'} housing loan` : c.lowTier ? 'Lower tier — tenure or age' : 'First housing loan')}
-          ${at ? row('Loan by LTV', money(at.ltvLoan)) : ''}
-          ${row('Loan by income', money(c.incomeLoan), '', `At ${c.stress}% stress rate`)}
           ${row('Instalment at stress rate', money(c.instStress), 'minor')}
           <tr><td colspan="2" class="meter-cell">
             ${c.hdbLoan ? '' : meter(`TDSR${cut ? ' on loan you take' : ' at stress rate'}`, c.tdsrUsed, TDSR)}
