@@ -58,6 +58,7 @@
   @media (min-width: 560px) { .panel { padding: 20px 20px 18px; } }
   .panel.who { --c: var(--who); --soft: var(--who-soft); }
   .panel.purchase { --c: var(--buy); --soft: var(--buy-soft); }
+  .panel.loanp { --c: var(--who); --soft: var(--who-soft); }
   .panel.sale { --c: var(--sale); --soft: var(--sale-soft); }
   .panel-head { display: flex; align-items: center; justify-content: space-between; gap: 10px 12px; flex-wrap: wrap; margin-bottom: 14px; }
   .panel-head h2 { margin: 0; font-size: 13px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--c); display: flex; align-items: center; gap: 10px; }
@@ -130,6 +131,9 @@
   .card.cost .card-head { background: var(--buy); }
   .card.proceeds .card-head { background: var(--sale); }
   .card.prep .card-head { background: var(--ink); }
+  .card.budget .card-head { background: #5b4a9e; }
+  .card.budget .hero .big { color: #5b4a9e; }
+  .rows tr.sub td, .rows tr.sub td:last-child { text-align: left; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 700; padding-top: 12px; background: #fafaf8; }
   .hero { padding: 16px 16px 8px; }
   .hero .big { font-size: 34px; font-weight: 750; letter-spacing: -0.025em; line-height: 1.05; font-variant-numeric: tabular-nums; color: var(--who); }
   .hero .why { font-size: 13px; color: var(--muted); margin-top: 4px; }
@@ -223,8 +227,9 @@
   <div class="layout">
     <div class="inputs">
       <section class="panel who" id="panel-who"></section>
-      <section class="panel purchase" id="panel-buy"></section>
+      <section class="panel loanp" id="panel-loan"></section>
       <section class="panel sale" id="panel-sale"></section>
+      <section class="panel purchase" id="panel-buy"></section>
     </div>
     <aside class="results" id="results" aria-live="polite"></aside>
   </div>
@@ -234,7 +239,7 @@
 </div>
 
 <div class="dock" id="dock"><div class="in">
-  <div><small>Max loan</small><b id="dock-loan">—</b></div>
+  <div><small>Max price</small><b id="dock-loan">—</b></div>
   <div><small id="dock-cash-lbl">Cash needed</small><b id="dock-cash">—</b></div>
   <a href="#results">See breakdown</a>
 </div></div>
@@ -279,18 +284,21 @@
 
   // ---------- State ----------
   const KEY = 'loan-calculator-v1';
-  const blankBuyer = () => ({ age: '', cit: 'sc', fixed: '', variable: '', debts: '', propLoans: '', oa: '', owned: '0', loans: '0' });
+  const blankBuyer = () => ({ age: '', cit: 'sc', fixed: '', variable: '', debts: '', propLoans: '', oa: '', cash: '', owned: '0', loans: '0' });
   const defaults = () => ({
     n: 1, married: true,
     b: [blankBuyer(), blankBuyer()],
     buy: { type: 'private', mode: 'resale', price: '', val: '', lease: '', loan: 'bank', rate: '2.0', stress: '4.0', tenure: '', grants: '', keep: '', legal: null, hdbLegal: false, valFee: null, other: '' },
-    sale: { on: false, type: 'hdb', owner: 'both', price: '', loan: '', cpfP: '', cpfI: '', first: true, repaid: true, bought: '', legal: null, hdbLegal: false, penalty: '', levy: '' },
+    sale: { on: false, type: 'hdb', owner: 'both', price: '', loan: '', cpf: [{ p: '', i: '' }, { p: '', i: '' }], first: true, repaid: true, hdb2nd: true, bought: '', legal: null, hdbLegal: false, penalty: '', levy: '' },
   });
   let state;
   try {
     const saved = JSON.parse(localStorage.getItem(KEY));
     const d = defaults();
     state = saved ? { ...d, ...saved, buy: { ...d.buy, ...saved.buy }, sale: { ...d.sale, ...saved.sale }, b: [0, 1].map(i => ({ ...blankBuyer(), ...(saved.b || [])[i] })) } : d;
+    // older saves kept one combined CPF figure for the sale
+    if (!Array.isArray(state.sale.cpf)) state.sale.cpf = [{ p: '', i: '' }, { p: '', i: '' }];
+    if (saved && saved.sale && ('cpfP' in saved.sale)) { state.sale.cpf[0] = { p: saved.sale.cpfP || '', i: saved.sale.cpfI || '' }; delete state.sale.cpfP; delete state.sale.cpfI; }
   } catch { state = defaults(); }
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch {} };
 
@@ -333,11 +341,12 @@
     if (!has(b.age) && !inc) return 'Not filled';
     return [CIT_SHORT[b.cit], has(b.age) ? b.age : null, inc ? money(inc) : null].filter(Boolean).join(' · ');
   }
+  const wide = html => html.replace('seg-toggle', 'seg-toggle wide');
 
   function renderWho() {
     const el = document.getElementById('panel-who');
     if (activeBuyer >= state.n) activeBuyer = 0;
-    const i = activeBuyer, b = state.b[i];
+    const i = activeBuyer;
     const tabs = state.n > 1 ? `<div class="seg-toggle wide buyer-tabs" role="tablist" aria-label="Buyer">
         ${[0, 1].map(k => `<button type="button" role="tab" data-buyer="${k}" class="${k === i ? 'on' : ''}" aria-selected="${k === i}">Buyer ${k + 1}<em>${esc(buyerSummary(state.b[k]))}</em></button>`).join('')}
       </div>` : '';
@@ -353,47 +362,29 @@
         ${moneyField(`b.${i}.variable`, 'Variable / month', { hint: 'Bonus, commission, rent. 70% counted' })}
         ${moneyField(`b.${i}.debts`, 'Other debts / month', { hint: 'Car, personal, cards' })}
         ${moneyField(`b.${i}.propLoans`, 'Home loans / month', { hint: 'On properties being kept' })}
-        ${moneyField(`b.${i}.oa`, 'CPF OA balance', { full: true })}
+        ${moneyField(`b.${i}.oa`, 'CPF OA balance')}
+        ${moneyField(`b.${i}.cash`, 'Cash savings', { hint: 'For the next home' })}
         ${selectField(`b.${i}.owned`, 'Properties owned', COUNT, { hint: 'Incl. HDB, overseas' })}
         ${selectField(`b.${i}.loans`, 'Home loans unpaid', COUNT, { hint: 'Excl. the home being sold' })}
       </div>`;
   }
 
-  function renderBuy(c) {
-    const s = state.buy, el = document.getElementById('panel-buy');
+  function renderLoan(c) {
+    const s = state.buy, el = document.getElementById('panel-loan');
     const hdb = s.type === 'hdb', hdbLoan = hdb && s.loan === 'hdb';
-    const fresh = isNew();
     el.innerHTML = `
-      <div class="panel-head">${title(2, 'Purchase')}${seg('buy.type', [['hdb', 'HDB'], ['private', 'Private'], ['ec', 'EC']], 'Property type')}</div>
+      <div class="panel-head">${title(2, 'Loan from income')}${seg('buy.type', [['hdb', 'HDB'], ['private', 'Private'], ['ec', 'EC']], 'Property type')}</div>
       ${s.type === 'private' ? `<div class="sub-toggle">${seg('buy.mode', [['resale', 'Resale'], ['new', 'New launch']], 'Resale or new launch')}</div>` : ''}
       ${s.type === 'ec' ? `<p class="fine" style="margin:0 0 14px">New EC from the developer. For a resale EC, pick Private.</p>` : ''}
+      ${hdb ? `<div class="sub-toggle">${wide(seg('buy.loan', [['bank', 'Bank loan'], ['hdb', 'HDB loan']], 'Loan type'))}</div>` : ''}
       <div class="grid2">
-        ${moneyField('buy.price', 'Purchase price', { full: fresh })}
-        ${fresh ? '' : moneyField('buy.val', 'Valuation', { ph: 'Same as price', hint: 'Fill in to check COV' })}
-        ${numField('buy.lease', 'Remaining lease', 'yrs', { ph: '99', full: !fresh, hint: '999 for freehold' })}
-      </div>
-      <div class="block">
-        <p class="block-title">Loan</p>
-        ${hdb ? `<div class="sub-toggle">${seg('buy.loan', [['bank', 'Bank loan'], ['hdb', 'HDB loan']], 'Loan type').replace('seg-toggle', 'seg-toggle wide')}</div>` : ''}
-        <div class="grid2">
-          ${hdbLoan ? numField('buy.rate', 'Interest rate', '%', { value: HDB_RATE.toFixed(1), disabled: true, hint: 'HDB, fixed' })
-                    : numField('buy.rate', 'Interest rate', '%', { ph: '2.0', hint: 'Packages now 1.4–2.3%' })}
-          ${hdbLoan ? numField('buy.stress', 'Stress test', '%', { value: HDB_FLOOR.toFixed(1), disabled: true, hint: 'HDB floor' })
-                    : numField('buy.stress', 'Stress test', '%', { ph: '4.0', hint: 'MAS floor' })}
-          ${numField('buy.tenure', 'Loan tenure', 'yrs', { value: has(s.tenure) ? s.tenure : (c ? c.autoTenure : ''), hint: c ? c.tenureHint : '' })}
-          ${moneyField('buy.keep', 'CPF OA to keep', { hint: hdbLoan ? 'Up to $20,000 each' : 'Not used' })}
-          ${hdb ? moneyField('buy.grants', 'CPF housing grants', { full: true, hint: 'Family, Enhanced, Proximity' }) : ''}
-        </div>
-      </div>
-      <div class="block">
-        <p class="block-title">Fees</p>
-        ${hdb ? toggle('buy.hdbLegal', 'HDB conveyancing', hdbLoan ? 'HDB acts for you: up to $1,000' : 'Not available with a bank loan. Bank loans need a private lawyer', !hdbLoan) : ''}
-        <div class="grid2">
-          ${moneyField('buy.legal', 'Legal fees', { value: s.legal ?? buyLegalDefault() })}
-          ${fresh ? '' : moneyField('buy.valFee', 'Valuation fee', { value: s.valFee ?? VAL_FEE })}
-          ${moneyField('buy.other', 'Other costs', { full: !fresh, hint: 'Renovation, furniture, moving' })}
-        </div>
-        <p class="fine">${fresh ? 'No buyer\'s agent fee on a new launch or EC.' : 'Buyer\'s agent fee: 1% + GST.'}</p>
+        ${hdbLoan ? numField('buy.rate', 'Interest rate', '%', { value: HDB_RATE.toFixed(1), disabled: true, hint: 'HDB, fixed' })
+                  : numField('buy.rate', 'Interest rate', '%', { ph: '2.0', hint: 'Packages now 1.4–2.3%' })}
+        ${hdbLoan ? numField('buy.stress', 'Stress test', '%', { value: HDB_FLOOR.toFixed(1), disabled: true, hint: 'HDB floor' })
+                  : numField('buy.stress', 'Stress test', '%', { ph: '4.0', hint: 'MAS floor' })}
+        ${numField('buy.tenure', 'Loan tenure', 'yrs', { value: has(s.tenure) ? s.tenure : (c ? c.autoTenure : ''), hint: c ? c.tenureHint : '' })}
+        ${numField('buy.lease', 'Remaining lease', 'yrs', { ph: '99', hint: '999 for freehold' })}
+        ${moneyField('buy.keep', 'CPF OA to keep', { full: true, hint: hdbLoan ? 'HDB loan: up to $20,000 each. The rest goes into the flat' : 'Left in OA, not used for the purchase' })}
       </div>`;
   }
 
@@ -403,17 +394,23 @@
     const head = `<div class="panel-head">${title(3, 'Sale of current home')}
       <label class="switch"><input type="checkbox" data-toggle="sale.on" ${s.on ? 'checked' : ''} aria-label="Include a sale"><span></span></label></div>`;
     if (!s.on) { el.innerHTML = head + '<p class="off-hint">Selling to fund this purchase? Switch on.</p>'; return; }
+    const owners = saleOwners();
+    const hdbLoan = state.buy.type === 'hdb' && state.buy.loan === 'hdb';
+    const cpfFields = owners.map(i => `
+        ${owners.length > 1 || state.n > 1 ? `<p class="block-title f full" style="margin:6px 0 -6px">Buyer ${i + 1} CPF</p>` : ''}
+        ${moneyField(`sale.cpf.${i}.p`, 'CPF principal used')}
+        ${moneyField(`sale.cpf.${i}.i`, 'CPF accrued interest')}`).join('');
     el.innerHTML = `${head}
       <div class="sub-toggle">${seg('sale.type', [['hdb', 'HDB'], ['private', 'Private / EC']], 'Type of home sold')}</div>
-      ${state.n > 1 ? `<div class="f" style="margin-bottom:14px"><span>Owned by</span>${seg('sale.owner', [['0', 'Buyer 1'], ['1', 'Buyer 2'], ['both', 'Both']], 'Owned by').replace('seg-toggle', 'seg-toggle wide')}</div>` : ''}
+      ${state.n > 1 ? `<div class="f" style="margin-bottom:14px"><span>Owned by</span>${wide(seg('sale.owner', [['0', 'Buyer 1'], ['1', 'Buyer 2'], ['both', 'Both']], 'Owned by'))}</div>` : ''}
       <div class="grid2">
         ${moneyField('sale.price', 'Selling price')}
         ${moneyField('sale.loan', 'Outstanding loan')}
-        ${moneyField('sale.cpfP', 'CPF principal used')}
-        ${moneyField('sale.cpfI', 'CPF accrued interest')}
+        ${cpfFields}
         ${s.type === 'private' ? `<label class="f full"><span>Date bought (OTP exercised)</span>
           <input type="date" data-path="sale.bought" value="${esc(s.bought)}" max="${isoToday()}"><small>For Seller's Stamp Duty</small></label>` : ''}
       </div>
+      <p class="fine">CPF figures are on the CPF website: My Statements → Home Ownership.</p>
       <div class="block">
         <p class="block-title">Fees</p>
         ${s.type === 'hdb' ? toggle('sale.hdbLegal', 'HDB conveyancing', 'Up to $1,000. Only if no bank loan to redeem') : ''}
@@ -428,14 +425,39 @@
         <p class="block-title">Timing</p>
         ${toggle('sale.first', 'Sell first', 'Buyer exercises your OTP before you exercise the new one. Avoids ABSD on the home sold')}
         ${toggle('sale.repaid', 'Loan repaid before new loan', 'If not, it counts as an outstanding loan. LTV drops to 45%')}
+        ${hdbLoan ? toggle('sale.hdb2nd', 'This will be a 2nd HDB loan', 'HDB then uses the CPF refund and up to 50% of cash proceeds to cut the loan') : ''}
+      </div>`;
+  }
+
+  function renderBuy() {
+    const s = state.buy, el = document.getElementById('panel-buy');
+    const hdb = s.type === 'hdb', hdbLoan = hdb && s.loan === 'hdb';
+    const fresh = isNew();
+    el.innerHTML = `
+      <div class="panel-head">${title(4, 'Purchase')}<span class="fine" style="margin:0">Optional — leave blank to see the max budget</span></div>
+      <div class="grid2">
+        ${moneyField('buy.price', 'Purchase price', { full: fresh })}
+        ${fresh ? '' : moneyField('buy.val', 'Valuation', { ph: 'Same as price', hint: 'Fill in to check COV' })}
+        ${hdb ? moneyField('buy.grants', 'CPF housing grants', { full: true, hint: 'Family, Enhanced, Proximity — credited to OA' }) : ''}
+      </div>
+      <div class="block">
+        <p class="block-title">Fees</p>
+        ${hdb ? toggle('buy.hdbLegal', 'HDB conveyancing', hdbLoan ? 'HDB acts for you: up to $1,000' : 'Not available with a bank loan. Bank loans need a private lawyer', !hdbLoan) : ''}
+        <div class="grid2">
+          ${moneyField('buy.legal', 'Legal fees', { value: s.legal ?? buyLegalDefault() })}
+          ${fresh ? '' : moneyField('buy.valFee', 'Valuation fee', { value: s.valFee ?? VAL_FEE })}
+          ${moneyField('buy.other', 'Other costs', { full: !fresh, hint: 'Renovation, furniture, moving' })}
+        </div>
+        <p class="fine">${fresh ? 'No buyer\'s agent fee on a new launch or EC.' : 'Buyer\'s agent fee: 1% + GST.'}</p>
       </div>`;
   }
 
   const isNew = () => state.buy.type === 'ec' || (state.buy.type === 'private' && state.buy.mode === 'new');
+  const saleOwners = () => state.n === 1 || state.sale.owner === 'both' ? [...Array(state.n).keys()] : [Number(state.sale.owner)];
   // HDB only acts for buyers on an HDB loan, and for HDB sellers with no bank loan to redeem.
   const buyLegalDefault = () => state.buy.type === 'hdb' && state.buy.loan === 'hdb' && state.buy.hdbLegal ? LEGAL_HDB : LEGAL;
   const saleLegalDefault = () => state.sale.type === 'hdb' && state.sale.hdbLegal ? LEGAL_HDB : LEGAL;
-  function renderAll() { const c = compute(); renderWho(); renderBuy(c); renderSale(); renderResults(c); }
+  function renderAll() { const c = compute(); renderWho(); renderLoan(c); renderSale(); renderBuy(); renderResults(c); }
 
   // ---------- Calculation ----------
   function compute() {
@@ -450,14 +472,17 @@
     const iwaa = grossTotal > 0 ? sum(ages.map((a, i) => a * gross[i])) / grossTotal : sum(ages) / ages.length;
     const youngest = Math.min(...ages);
     const anySC = B.some(b => b.cit === 'sc');
-    const owners = sl.on ? (state.n === 1 || sl.owner === 'both' ? B.map((_, i) => i) : [Number(sl.owner)]) : [];
+    const owners = sl.on ? saleOwners() : [];
 
     // ----- Sale -----
     let sale = null;
     if (sl.on) {
-      const price = num(sl.price), loan = num(sl.loan), owed = num(sl.cpfP) + num(sl.cpfI);
+      const price = num(sl.price), loan = num(sl.loan);
+      const owedBy = B.map((_, i) => owners.includes(i) ? num(sl.cpf[i].p) + num(sl.cpf[i].i) : 0);
+      const owed = sum(owedBy);
       const grossP = price - loan;
       const cpfBack = clamp(grossP, 0, owed);
+      const backBy = owedBy.map(o => owed ? o * cpfBack / owed : 0);
       const agent = price * AGENT_SALE * (1 + GST);
       const legal = sl.legal != null ? num(sl.legal) : saleLegalDefault();
       let ssd = 0, ssdRate = 0, ssdNote = '';
@@ -467,15 +492,20 @@
         const tiers = newRegime ? [0.16, 0.12, 0.08, 0.04] : [0.12, 0.08, 0.04];
         for (let k = 0; k < tiers.length; k++) if (now <= addYears(bought, k + 1)) { ssdRate = tiers[k]; break; }
         ssd = price * ssdRate;
-        if (ssdRate) ssdNote = `${pct(ssdRate, 0)} — sold within ${yrs(tiers.indexOf(ssdRate) + 1)} of buying`;
         if (ssdRate) {
-          const free = addYears(bought, tiers.length);
-          flags.push(['warn', `Seller's Stamp Duty of ${money(ssd)} applies. Selling after <b>${fmtDate(free)}</b> avoids it.`]);
+          ssdNote = `${pct(ssdRate, 0)} — sold within ${yrs(tiers.indexOf(ssdRate) + 1)} of buying`;
+          flags.push(['warn', `Seller's Stamp Duty of ${money(ssd)} applies. Selling after <b>${fmtDate(addYears(bought, tiers.length))}</b> avoids it.`]);
         }
       }
       const penalty = num(sl.penalty), levy = sl.type === 'hdb' && ec ? num(sl.levy) : 0;
       const cash = grossP - cpfBack - agent - legal - ssd - penalty - levy;
-      sale = { price, loan, owed, cpfBack, agent, legal, ssd, ssdRate, ssdNote, penalty, levy, cash, shortCPF: owed - cpfBack };
+      // 2nd HDB loan: HDB counts cash proceeds before agent and legal fees (deposit included);
+      // the seller keeps the higher of $25,000 or half, the rest must cut the new loan.
+      const ruleCash = Math.max(0, grossP - cpfBack - levy);
+      const rule50 = hdbLoan && sl.hdb2nd;
+      const keepCash = ruleCash <= 25000 ? ruleCash : Math.max(25000, ruleCash / 2);
+      const mustUse = rule50 ? Math.min(Math.max(0, cash), ruleCash - keepCash) : 0;
+      sale = { price, loan, owed, owedBy, cpfBack, backBy, agent, legal, ssd, ssdRate, ssdNote, penalty, levy, cash, shortCPF: owed - cpfBack, rule50, ruleCash, keepCash, mustUse };
       if (price && grossP < 0) flags.push(['warn', `The selling price doesn't cover the outstanding loan. You will need ${money(-grossP)} in cash to redeem it.`]);
       if (price && sale.shortCPF > 0.5 && grossP >= 0) flags.push(['info', `Sale proceeds cover only ${money(cpfBack)} of the ${money(owed)} CPF to refund. For a sale at market value, CPF does not ask you to top up the shortfall.`]);
     }
@@ -516,80 +546,99 @@
     const allowance = hdbLoan ? msrRoom : useMSR ? Math.min(tdsrRoom, msrRoom) : tdsrRoom;
     const incomeRule = hdbLoan ? 'MSR' : useMSR ? (msrRoom <= tdsrRoom ? 'MSR' : 'TDSR') : 'TDSR';
     const incomeLoan = Math.max(0, pv(stress, tenure, allowance));
+    const incomeLoanR = Math.floor(incomeLoan / 100) * 100;
 
-    // ----- Price -----
-    const P = num(s.price);
-    const V = fresh ? P : (has(s.val) ? num(s.val) : P);
-    const base = Math.min(P, V), cov = Math.max(0, P - V);
-    const ltvLoan = ltv * base;
-    const maxLoan = P ? Math.floor(Math.min(ltvLoan, incomeLoan) / 100) * 100 : Math.floor(incomeLoan / 100) * 100;
-    const binding = !P ? 'income' : ltvLoan <= incomeLoan ? 'LTV' : incomeRule;
-    const priceSupported = ltv > 0 ? incomeLoan / ltv : 0;
-
-    // ----- Stamp duties -----
-    const dutyBase = Math.max(P, V);
-    const BSD = P ? bsd(dutyBase) : 0;
+    // ----- ABSD profile -----
     const counts = B.map((b, i) => num(b.owned) + (sl.on && !sl.first && owners.includes(i) ? 1 : 0));
-    const rateFor = i => ABSD[B[i].cit][Math.min(2, counts[i])];
-    let absdRate = Math.max(...B.map((_, i) => rateFor(i)));
+    let absdRate = Math.max(...B.map((b, i) => ABSD[b.cit][Math.min(2, counts[i])]));
     let absdNote = '', absdRefund = false;
     const marriedSC = state.n === 2 && state.married && anySC;
-    if (marriedSC && counts.every(c => c === 0)) { absdRate = 0; if (B.some(b => b.cit !== 'sc')) absdNote = 'Remitted — married couple with a Singapore Citizen'; }
-    else if (marriedSC && counts.every(c => c <= 1) && absdRate > 0) { absdRefund = true; absdNote = 'Refundable if the first home is sold within 6 months'; }
-    const ABSDamt = P ? Math.round(dutyBase * absdRate) : 0;
-    let absdIfSellFirst = null;
-    if (sl.on && !sl.first && P) {
+    if (marriedSC && counts.every(k => k === 0)) { absdRate = 0; if (B.some(b => b.cit !== 'sc')) absdNote = 'Remitted — married couple with a Singapore Citizen'; }
+    else if (marriedSC && counts.every(k => k <= 1) && absdRate > 0) { absdRefund = true; absdNote = 'Refundable if the first home is sold within 6 months'; }
+    let absdRateSellFirst = null;
+    if (sl.on && !sl.first) {
       const c2 = B.map(b => num(b.owned));
-      let r2 = Math.max(...B.map((b, i) => ABSD[b.cit][Math.min(2, c2[i])]));
-      if (marriedSC && c2.every(c => c === 0)) r2 = 0;
-      absdIfSellFirst = Math.round(dutyBase * r2);
+      absdRateSellFirst = marriedSC && c2.every(k => k === 0) ? 0 : Math.max(...B.map((b, i) => ABSD[b.cit][Math.min(2, c2[i])]));
     }
 
-    // ----- Fees -----
-    const agentBuy = fresh ? 0 : P * AGENT_BUY * (1 + GST);
-    const legalBuy = s.legal != null ? num(s.legal) : buyLegalDefault();
-    const valFee = fresh ? 0 : (s.valFee != null ? num(s.valFee) : VAL_FEE);
-    const otherBuy = num(s.other);
-
-    // ----- Funding -----
-    const oaTotal = sum(B.map(b => num(b.oa)));
+    // ----- Money available -----
+    const oaBy = B.map(b => num(b.oa));
+    const oaTotal = sum(oaBy);
     const grants = hdb ? num(s.grants) : 0;
     const keepMax = hdbLoan ? Math.min(oaTotal, OA_KEEP_HDB * state.n) : oaTotal;
     const keep = clamp(num(s.keep), 0, keepMax);
     const cpfBack = sale ? sale.cpfBack : 0;
-    let pool = Math.max(0, oaTotal - keep) + cpfBack + grants;
-    const poolStart = pool;
-
-    let loan = P ? maxLoan : 0;
-    let D = P - loan;
-    const minCash = P ? Math.min(D, minCashPct * base + cov) : 0;
-    const cpfCap = base * leaseFactor;
-    let cpfDown = P ? Math.max(0, Math.min(D - minCash, cpfCap, pool)) : 0;
-    pool -= cpfDown;
-    const cpfPayable = BSD + ABSDamt + legalBuy;
-    const cpfFees = P ? Math.min(pool, cpfPayable) : 0;
-    pool -= cpfFees;
-    let hdbCut = 0;
-    if (P && hdbLoan && pool > 0) {
-      hdbCut = Math.floor(Math.min(pool, loan, Math.max(0, cpfCap - cpfDown)));
-      loan -= hdbCut; cpfDown += hdbCut; pool -= hdbCut; D = P - loan;
-    }
-    const mortgageDuty = loan > 0 ? Math.min(500, Math.floor(loan * 0.004)) : 0;
-    const cashDown = D - cpfDown;
-    const cashFees = (cpfPayable - cpfFees) + agentBuy + valFee + mortgageDuty + otherBuy;
-    const cashNeeded = P ? cashDown + cashFees : 0;
-    const cpfUsed = cpfDown + cpfFees;
+    const poolStart = Math.max(0, oaTotal - keep) + cpfBack + grants;
+    const savings = sum(B.map(b => num(b.cash)));
     const saleCash = sale ? sale.cash : 0;
-    const topUp = cashNeeded - saleCash;
-    const totalCost = P + BSD + ABSDamt + legalBuy + agentBuy + valFee + mortgageDuty + otherBuy;
+    const cashAvail = savings + saleCash;
+    const legalBuy = s.legal != null ? num(s.legal) : buyLegalDefault();
+    const otherBuy = num(s.other);
+    const valFeeIn = fresh ? 0 : (s.valFee != null ? num(s.valFee) : VAL_FEE);
 
-    // Cash due before completion (before sale proceeds or CPF reimbursement arrive)
-    const deposit = !P ? 0 : hdb ? Math.min(5000, D) : 0.05 * P;
-    const depositLbl = hdb ? 'Option + exercise fee (up to $5,000)' : fresh ? '5% booking fee' : '5% option + exercise (1% + 4%)';
-    const dutyUpfront = fresh ? Math.max(0, BSD + ABSDamt - Math.max(0, poolStart - cpfDown)) : BSD + ABSDamt;
-    const upfront = deposit + dutyUpfront + valFee;
+    // Funding for a given price and valuation.
+    function fund(P, V) {
+      const base = Math.min(P, V), cov = Math.max(0, P - V);
+      const ltvLoan = ltv * base;
+      const maxLoan = Math.floor(Math.min(ltvLoan, incomeLoan) / 100) * 100;
+      const dutyBase = Math.max(P, V);
+      const BSD = bsd(dutyBase), ABSDamt = Math.round(dutyBase * absdRate);
+      const agentBuy = fresh ? 0 : P * AGENT_BUY * (1 + GST);
+      const valFee = valFeeIn;
+      let pool = poolStart, loan = maxLoan, D = P - loan;
+      const minCash = Math.min(D, minCashPct * base + cov);
+      const cpfCap = base * leaseFactor;
+      let cpfDown = Math.max(0, Math.min(D - minCash, cpfCap, pool));
+      pool -= cpfDown;
+      const cpfPayable = BSD + ABSDamt + legalBuy;
+      const cpfFees = Math.min(pool, cpfPayable);
+      pool -= cpfFees;
+      let hdbCut = 0, cashCut = 0;
+      if (hdbLoan && pool > 0) {
+        hdbCut = Math.floor(Math.min(pool, loan, Math.max(0, cpfCap - cpfDown)));
+        loan -= hdbCut; cpfDown += hdbCut; pool -= hdbCut;
+      }
+      if (sale && sale.mustUse > 0) { cashCut = Math.floor(Math.min(sale.mustUse, loan)); loan -= cashCut; }
+      D = P - loan;
+      const mortgageDuty = loan > 0 ? Math.min(500, Math.floor(loan * 0.004)) : 0;
+      const cashDown = D - cpfDown;
+      const cashFees = (cpfPayable - cpfFees) + agentBuy + valFee + mortgageDuty + otherBuy;
+      const cashNeeded = cashDown + cashFees;
+      const fees = BSD + ABSDamt + legalBuy + agentBuy + valFee + mortgageDuty + otherBuy;
+      return { P, V, base, cov, ltvLoan, maxLoan, BSD, ABSDamt, agentBuy, valFee, mortgageDuty, loan, D, minCash, cpfDown, cpfFees,
+        cpfUsed: cpfDown + cpfFees, cashDown, cashNeeded, poolLeft: pool, hdbCut, cashCut, fees, totalCost: P + fees,
+        binding: ltvLoan <= incomeLoan ? 'LTV' : incomeRule };
+    }
 
-    const inst = pmt(rate, tenure, loan), instStress = pmt(stress, tenure, loan);
+    // ----- Max affordability: highest price the loan + CPF + cash can cover -----
+    let budget = null;
+    if (income > 0 || poolStart > 0 || cashAvail > 0) {
+      let lo = 0, hi = incomeLoan + poolStart + Math.max(0, cashAvail) + 1;
+      if (fund(0, 0).cashNeeded <= cashAvail) {
+        for (let k = 0; k < 50; k++) { const mid = (lo + hi) / 2; if (fund(mid, mid).cashNeeded <= cashAvail + 0.5) lo = mid; else hi = mid; }
+        const maxPrice = Math.floor(lo / 1000) * 1000;
+        const f = fund(maxPrice, maxPrice);
+        const cpfIdle = f.poolLeft;
+        const limit = cpfIdle > 1000 && f.minCash > 0 && f.cashNeeded >= cashAvail - 1000 ? 'mincash' : 'all';
+        budget = { maxPrice, f, cpfIdle, limit };
+      } else budget = { maxPrice: 0, f: fund(0, 0), cpfIdle: poolStart, limit: 'fees' };
+    }
+
+    // ----- At the entered price -----
+    const P = num(s.price);
+    const V = fresh ? P : (has(s.val) ? num(s.val) : P);
+    const at = P ? fund(P, V) : null;
+    const topUp = at ? at.cashNeeded - saleCash : 0;
+    const shortfall = at ? at.cashNeeded - cashAvail : 0;
+    let deposit = 0, depositLbl = '', dutyUpfront = 0, upfront = 0, inst = 0, instStress = 0;
+    if (at) {
+      deposit = hdb ? Math.min(5000, at.D) : 0.05 * P;
+      depositLbl = hdb ? 'Option + exercise fee (up to $5,000)' : fresh ? '5% booking fee' : '5% option + exercise (1% + 4%)';
+      dutyUpfront = fresh ? Math.max(0, at.BSD + at.ABSDamt - Math.max(0, poolStart - at.cpfDown)) : at.BSD + at.ABSDamt;
+      upfront = deposit + dutyUpfront + at.valFee;
+    }
+    const loanShown = at ? at.loan : incomeLoanR;
+    inst = pmt(rate, tenure, loanShown); instStress = pmt(stress, tenure, loanShown);
     const tdsrUsed = income ? (instStress + otherDebt + otherProp) / income : 0;
     const msrUsed = income ? (instStress + otherProp) / income : 0;
 
@@ -602,7 +651,8 @@
       if (grossTotal > HDB_CEILING[hh]) flags.push(['warn', `Income of ${money(grossTotal)} is above the HDB loan ceiling of ${money(HDB_CEILING[hh])} (${hh === 'single' ? 'singles' : 'households'}, from 24 Aug 2026). Use a bank loan.`]);
       if (sl.on && sl.type === 'private') flags.push(['warn', 'An HDB loan is not available to anyone who owned private property in the last 30 months.']);
       if (loansOut) flags.push(['warn', 'HDB will not grant a loan while another home loan is outstanding.']);
-      if (hdbCut > 0) flags.push(['info', `With an HDB loan, CPF OA savings beyond what you keep must go into the flat first. That cuts the loan by <b>${money(hdbCut)}</b>. Keep up to $20,000 each to hold it back.`]);
+      if (at && at.hdbCut > 0) flags.push(['info', `With an HDB loan, CPF OA savings beyond what you keep must go into the flat first. That cuts the loan by <b>${money(at.hdbCut)}</b>. Keep up to $20,000 each to hold it back.`]);
+      if (sale && sale.rule50 && sale.ruleCash > 0) flags.push(['info', `2nd HDB loan: HDB counts ${money(sale.ruleCash)} cash proceeds. The client keeps <b>${money(sale.keepCash)}</b> (the higher of $25,000 or half) and <b>${money(sale.ruleCash - sale.keepCash)}</b> must go into the flat to reduce the loan, together with the CPF refund.`]);
       if (capMax < 1 && agesKnown) flags.push(['warn', 'Average age or remaining lease leaves no room for an HDB loan tenure.']);
     }
     if (hdb && sl.on && sl.type === 'private') flags.push(['info', 'Private owners can buy a resale flat with no wait-out (removed 28 Jul 2026) but must sell the private home within 6 months of completing the flat purchase.']);
@@ -620,21 +670,22 @@
     if (leaseFactor < 1 && agesKnown) flags.push(['warn', leaseFactor === 0
       ? 'A remaining lease under 20 years cannot be paid for with CPF.'
       : `The lease doesn't cover the youngest buyer to age 95, so CPF use is capped at ${pct(leaseFactor, 0)} of the value${hdbLoan ? ' and the HDB loan is pro-rated to ' + pct(ltv, 1) : ''}.`]);
-    if (P && cov > 0) flags.push(['info', `The price is ${money(cov)} above valuation. The loan uses the valuation, and the difference must be paid in cash.`]);
-    if (P && ABSDamt > 0) {
-      if (absdRefund) flags.push(['info', `ABSD of <b>${money(ABSDamt)}</b> must be paid within 14 days. It's refunded if the first home is sold within 6 months of completing this purchase (or of TOP, for a new launch).`]);
-      if (absdIfSellFirst != null && absdIfSellFirst < ABSDamt) flags.push(['warn', `Sell first: if your buyer exercises your OTP before you exercise this one, ABSD drops from ${money(ABSDamt)} to <b>${money(absdIfSellFirst)}</b>.`]);
+    if (budget && budget.limit === 'mincash' && budget.cpfIdle > 1000) flags.push(['warn', `Cash is the limit, not CPF: ${money(budget.cpfIdle)} of CPF sits unused because at least ${pct(minCashPct, 0)} of the price, plus agent and other fees, must be paid in cash.`]);
+    if (at && at.cov > 0) flags.push(['info', `The price is ${money(at.cov)} above valuation. The loan uses the valuation, and the difference must be paid in cash.`]);
+    if (at && at.ABSDamt > 0) {
+      if (absdRefund) flags.push(['info', `ABSD of <b>${money(at.ABSDamt)}</b> must be paid within 14 days. It's refunded if the first home is sold within 6 months of completing this purchase (or of TOP, for a new launch).`]);
+      if (absdRateSellFirst != null && absdRateSellFirst < absdRate) flags.push(['warn', `Sell first: if your buyer exercises your OTP before you exercise this one, ABSD drops from ${money(at.ABSDamt)} to <b>${money(Math.round(Math.max(at.P, at.V) * absdRateSellFirst))}</b>.`]);
       if (state.n === 1 && B[0].cit === 'sc' && num(B[0].age) >= 55 && counts[0] === 1) flags.push(['info', 'Single Singapore Citizens aged 55 and above may get an ABSD refund if they buy a lower-value replacement home and sell the first one within 6 months (IRAS concession).']);
     }
-    if (sl.on && sl.first && P && B.some((b, i) => owners.includes(i))) flags.push(['good', 'Selling first, so the home being sold is not counted for ABSD.']);
-    if (P && binding !== 'LTV' && loan > 0) flags.push(['info', `Income caps this loan, not LTV. ${incomeRule} at the ${stress}% stress rate supports ${money(incomeLoan)}. To get the full ${pct(ltv, 0)}, ${incomeRule === 'MSR' ? 'MSR' : 'TDSR'} would need about ${money(pmt(stress, tenure, ltvLoan) / (incomeRule === 'MSR' ? MSR : TDSR) + (incomeRule === 'MSR' ? otherProp / MSR : (otherDebt + otherProp) / TDSR))} monthly income.`]);
-    if (sl.on && P) flags.push(['info', 'Sale proceeds and the CPF refund arrive only when the sale completes. The deposit and stamp duty fall due earlier, so plan that cash first.']);
+    if (!at && absdRate > 0) flags.push(['warn', `ABSD of ${pct(absdRate, 0)} applies to this purchase${absdRefund ? ' (refundable if the first home is sold within 6 months)' : ''}. The budget above already allows for it.`]);
+    if (sl.on && sl.first && owners.length) flags.push(['good', 'Selling first, so the home being sold is not counted for ABSD.']);
+    if (at && at.binding !== 'LTV' && at.loan > 0) flags.push(['info', `Income caps this loan, not LTV. ${incomeRule} at the ${stress}% stress rate supports ${money(incomeLoan)}. To get the full ${pct(ltv, 0)}, ${incomeRule} would need about ${money(pmt(stress, tenure, at.ltvLoan) / (incomeRule === 'MSR' ? MSR : TDSR) + (incomeRule === 'MSR' ? otherProp / MSR : (otherDebt + otherProp) / TDSR))} monthly income.`]);
+    if (sl.on) flags.push(['info', 'Sale proceeds and the CPF refund arrive only when the sale completes. The deposit and stamp duty fall due earlier, so plan that cash first.']);
 
     return { B, hdb, ec, hdbLoan, fresh, iwaa, youngest, agesKnown, income, grossTotal, tenure, autoTenure, tenureHint, cap75, capMax, lowTier,
-      ltv, minCashPct, stress, rate, incomeLoan, ltvLoan, maxLoan, binding, incomeRule, priceSupported, loansOut, leaseFactor,
-      P, V, base, cov, BSD, ABSDamt, absdRate, absdNote, absdRefund, agentBuy, legalBuy, valFee, mortgageDuty, otherBuy, totalCost,
-      loan, D, minCash, cpfDown, cpfFees, cpfUsed, cashDown, cashNeeded, saleCash, topUp, poolLeft: pool, keep, grants, oaTotal, hdbCut,
-      deposit, depositLbl, dutyUpfront, upfront, inst, instStress, tdsrUsed, msrUsed, otherDebt, otherProp, sale, flags };
+      ltv, minCashPct, stress, rate, incomeLoan, incomeLoanR, incomeRule, loansOut, leaseFactor, absdRate, absdNote, absdRefund,
+      oaBy, oaTotal, grants, keep, poolStart, savings, saleCash, cashAvail, legalBuy, otherBuy, owners,
+      at, budget, topUp, shortfall, deposit, depositLbl, dutyUpfront, upfront, inst, instStress, tdsrUsed, msrUsed, otherDebt, otherProp, sale, flags };
   }
 
   // ---------- Results ----------
@@ -649,91 +700,121 @@
     const el = document.getElementById('results');
     const typeLbl = c.hdb ? 'HDB' : c.ec ? 'New EC' : c.fresh ? 'New launch' : 'Private resale';
     const loanLbl = c.hdbLoan ? 'HDB loan' : 'Bank loan';
-    if (!c.income) {
-      el.innerHTML = `<div class="card loan"><div class="card-head"><span>Maximum loan</span><em>${typeLbl} · ${loanLbl}</em></div>
-        <div class="empty">Enter each buyer's age and income to see how much they can borrow.</div></div>
-        ${flagsHtml(c)}`;
-      updateDock(c); buildReport(c); return;
-    }
-    const bindTxt = { LTV: `Capped by LTV (${pct(c.ltv, 1)} of ${c.cov ? 'valuation' : 'price'})`, TDSR: 'Capped by income — TDSR 55%', MSR: 'Capped by income — MSR 30%', income: 'Supported by income — enter a price' }[c.binding];
-    const loanCard = `<div class="card loan"><div class="card-head"><span>Maximum loan</span><em>${typeLbl} · ${loanLbl}</em></div>
-      <div class="hero"><div class="big">${money(c.maxLoan)}</div><div class="why">${bindTxt}</div></div>
-      <table class="rows">
-        ${row('Loan tenure', yrs(c.tenure), '', c.agesKnown ? `${state.n > 1 ? 'Income-weighted' : 'Buyer'} age ${c.iwaa.toFixed(1)}` : '')}
-        ${row('Loan-to-value', pct(c.ltv, 1), '', c.hdbLoan ? 'HDB loan' : c.loansOut ? `${c.loansOut === 1 ? '2nd' : '3rd'} housing loan` : c.lowTier ? 'Lower tier — tenure or age' : 'First housing loan')}
-        ${c.P ? row('Loan by LTV', money(c.ltvLoan)) : ''}
-        ${row('Loan by income', money(c.incomeLoan), '', `At ${c.stress}% stress rate`)}
-        ${!c.P && c.priceSupported ? row('Price this supports', money(c.priceSupported), 'minor', `At ${pct(c.ltv, 0)} LTV`) : ''}
-        ${c.loan !== c.maxLoan && c.P ? row('Loan you take', money(c.loan), 'hl', 'After OA savings go in first') : ''}
-        ${row('Monthly instalment', money(c.P ? c.inst : pmt(c.rate, c.tenure, c.maxLoan)), 'total', `At ${c.rate}%${c.hdbLoan ? ' fixed' : ''} over ${yrs(c.tenure)}`)}
-        ${row('At stress rate', money(c.P ? c.instStress : pmt(c.stress, c.tenure, c.maxLoan)), 'minor')}
-      </table>
-      <div class="meters">
-        ${c.hdbLoan ? '' : meter('TDSR at stress rate', c.P ? c.tdsrUsed : (pmt(c.stress, c.tenure, c.maxLoan) + c.otherDebt + c.otherProp) / c.income, TDSR)}
-        ${c.hdb || c.ec ? meter('MSR at stress rate', c.P ? c.msrUsed : (pmt(c.stress, c.tenure, c.maxLoan) + c.otherProp) / c.income, MSR) : ''}
-      </div></div>`;
+    const at = c.at;
+    let html = '';
 
-    let costCard = '', saleCard = '', prepCard = '';
-    if (c.P) {
-      costCard = `<div class="card cost"><div class="card-head"><span>Purchase costs</span><em>${money(c.P)}</em></div>
+    // 1. Loan from income
+    if (!c.income) {
+      html += `<div class="card loan"><div class="card-head"><span>Loan from income</span><em>${typeLbl} · ${loanLbl}</em></div>
+        <div class="empty">Enter each buyer's age and income to see how much they can borrow.</div></div>`;
+    } else {
+      const big = at ? at.maxLoan : c.incomeLoanR;
+      const why = !at ? `${c.incomeRule === 'MSR' ? 'MSR 30%' : 'TDSR 55%'} at ${c.stress}% stress rate`
+        : at.binding === 'LTV' ? `At this price, capped by LTV (${pct(c.ltv, 1)} of ${at.cov ? 'valuation' : 'price'})` : `At this price, capped by income — ${at.binding === 'MSR' ? 'MSR 30%' : 'TDSR 55%'}`;
+      html += `<div class="card loan"><div class="card-head"><span>${at ? 'Maximum loan' : 'Loan from income'}</span><em>${typeLbl} · ${loanLbl}</em></div>
+        <div class="hero"><div class="big">${money(big)}</div><div class="why">${why}</div></div>
         <table class="rows">
-          ${row('Downpayment', money(c.D), '', `${pct(c.P ? c.D / c.P : 0, 1)} of price`)}
-          ${c.minCash > 0 ? row(c.cov ? 'of which cash only' : `of which min. cash (${pct(c.minCashPct, 0)})`, money(c.minCash), 'minor', c.cov ? `Incl. ${money(c.cov)} above valuation` : '') : ''}
-          ${row("Buyer's Stamp Duty", money(c.BSD))}
-          ${row("Additional Buyer's Stamp Duty", money(c.ABSDamt), c.ABSDamt ? 'hl' : '', c.ABSDamt ? `${pct(c.absdRate, 0)}${c.absdRefund ? ' · refundable' : ''}` : c.absdNote || 'Not payable')}
-          ${row('Legal fees', money(c.legalBuy))}
-          ${c.fresh ? '' : row("Buyer's agent fee", money(c.agentBuy), '', '1% + 9% GST')}
-          ${c.valFee ? row('Valuation fee', money(c.valFee)) : ''}
-          ${row('Mortgage stamp duty', money(c.mortgageDuty), '', '0.4% of loan, max $500')}
-          ${c.otherBuy ? row('Other costs', money(c.otherBuy)) : ''}
-          ${row('Total excluding loan', money(c.totalCost - c.loan), 'total')}
-        </table></div>`;
+          ${row('Loan tenure', yrs(c.tenure), '', c.agesKnown ? `${state.n > 1 ? 'Income-weighted' : 'Buyer'} age ${c.iwaa.toFixed(1)}` : '')}
+          ${row('Loan-to-value', pct(c.ltv, 1), '', c.hdbLoan ? 'HDB loan' : c.loansOut ? `${c.loansOut === 1 ? '2nd' : '3rd'} housing loan` : c.lowTier ? 'Lower tier — tenure or age' : 'First housing loan')}
+          ${at ? row('Loan by LTV', money(at.ltvLoan)) + row('Loan by income', money(c.incomeLoan), '', `At ${c.stress}% stress rate`) : ''}
+          ${at && at.loan !== at.maxLoan ? row('Loan you take', money(at.loan), 'hl', [at.hdbCut ? `CPF in first: −${money(at.hdbCut)}` : '', at.cashCut ? `50% sale cash: −${money(at.cashCut)}` : ''].filter(Boolean).join(' · ')) : ''}
+          ${row('Monthly instalment', money(c.inst), 'total', `At ${c.rate}%${c.hdbLoan ? ' fixed' : ''} over ${yrs(c.tenure)}`)}
+          ${row('At stress rate', money(c.instStress), 'minor')}
+        </table>
+        <div class="meters">
+          ${c.hdbLoan ? '' : meter('TDSR at stress rate', c.tdsrUsed, TDSR)}
+          ${c.hdb || c.ec ? meter('MSR at stress rate', c.msrUsed, MSR) : ''}
+        </div></div>`;
     }
+
+    // 2. Sale proceeds, split by seller
     if (c.sale) {
-      const s = c.sale;
-      saleCard = `<div class="card proceeds"><div class="card-head"><span>Sale proceeds</span><em>${state.sale.type === 'hdb' ? 'HDB' : 'Private'}</em></div>
+      const s = c.sale, split = c.owners.length > 1;
+      const cpfRows = split ? c.owners.map(i => row(`Buyer ${i + 1} CPF refund`, money(-s.backBy[i]), 'minor', s.owedBy[i] - s.backBy[i] > 0.5 ? `Of ${money(s.owedBy[i])} owed` : '')).join('') : '';
+      const nextRows = c.B.map((b, i) => row(`Buyer ${i + 1}`, money(c.oaBy[i] + (s.backBy[i] || 0)), '', `OA ${money(c.oaBy[i])} + refund ${money(s.backBy[i] || 0)}`)).join('');
+      html += `<div class="card proceeds"><div class="card-head"><span>Sale proceeds</span><em>${state.sale.type === 'hdb' ? 'HDB' : 'Private'}</em></div>
         <table class="rows">
           ${row('Selling price', money(s.price))}
           ${row('Outstanding loan', money(-s.loan))}
           ${row('CPF refund to OA', money(-s.cpfBack), '', s.shortCPF > 0.5 ? `Of ${money(s.owed)} owed — no top-up needed` : 'Principal + accrued interest')}
+          ${cpfRows}
           ${row("Seller's agent fee", money(-s.agent), '', '2% + 9% GST')}
           ${row('Legal fees', money(-s.legal))}
           ${s.ssd ? row("Seller's Stamp Duty", money(-s.ssd), 'hl', s.ssdNote) : ''}
           ${s.penalty ? row('Bank penalty / clawback', money(-s.penalty)) : ''}
           ${s.levy ? row('HDB resale levy', money(-s.levy)) : ''}
           ${row('Cash proceeds', money(s.cash), 'total')}
+          ${s.rule50 && s.mustUse > 0 ? row('of which must go into the flat', money(s.mustUse), 'minor', `2nd HDB loan rule. Client keeps ${money(s.keepCash)}`) : ''}
+        </table>
+        <table class="rows"><tr class="sub"><td colspan="2">CPF OA for the next home</td></tr>
+          ${nextRows}
+          ${c.grants ? row('CPF housing grants', money(c.grants)) : ''}
+          ${c.keep ? row('Kept aside in OA', money(-c.keep), 'minor') : ''}
+          ${row('CPF available', money(c.poolStart), 'total')}
         </table></div>`;
     }
-    if (c.P) {
-      const need = c.topUp > 0.5;
-      prepCard = `<div class="card prep"><div class="card-head"><span>What to prepare</span><em>${need ? 'Cash top-up needed' : 'Covered'}</em></div>
+
+    // 3. Max affordability
+    if (c.budget) {
+      const b = c.budget, f = b.f;
+      const limitTxt = b.limit === 'mincash' ? `Limited by cash — ${pct(c.minCashPct, 0)} of price must be cash`
+        : b.limit === 'fees' ? 'Not enough cash for the fees'
+        : `All loan, CPF and cash used · loan capped by ${f.binding === 'LTV' ? `LTV (${pct(c.ltv, 0)})` : 'income'}`;
+      html += `<div class="card budget"><div class="card-head"><span>Max affordability</span><em>${typeLbl}</em></div>
+        <div class="hero"><div class="big">${money(b.maxPrice)}</div><div class="why">${limitTxt}${c.absdRate ? ` · after ${pct(c.absdRate, 0)} ABSD` : ''}</div></div>
         <table class="rows">
-          ${row(c.hdbLoan ? 'HDB loan' : 'Bank loan', money(c.loan))}
-          ${row('CPF OA used', money(c.cpfUsed), '', [c.sale && c.sale.cpfBack ? `Incl. ${money(c.sale.cpfBack)} refunded from the sale` : '', c.grants ? `Incl. ${money(c.grants)} grants` : ''].filter(Boolean).join(' · ') || 'Downpayment, stamp duties, legal')}
-          ${row('Cash needed', money(c.cashNeeded), '', 'Min. cash plus fees CPF can\'t pay')}
-          ${c.sale ? row('From sale proceeds', money(Math.max(0, Math.min(c.saleCash, c.cashNeeded))), 'minor') : ''}
-          ${need ? row('Cash top-up from savings', money(c.topUp), 'total hl') : row(c.sale ? 'Cash left over from sale' : 'Cash top-up from savings', money(-c.topUp), 'total good')}
-          ${c.absdRefund && c.ABSDamt ? row('ABSD refunded later', money(c.ABSDamt), 'minor', 'Once the first home is sold within 6 months') : ''}
-          ${row('CPF left in OA',money(c.poolLeft + c.keep), 'minor', c.keep ? `Incl. ${money(c.keep)} kept aside` : '')}
-          ${row('Cash due before completion', money(c.upfront), 'hl', `${c.depositLbl}${c.dutyUpfront ? ' + stamp duty in 14 days' : ''}${c.fresh || !c.dutyUpfront ? '' : '. CPF refunds the duty at completion'}`)}
+          ${row(c.hdbLoan ? 'HDB loan' : 'Bank loan', money(f.loan))}
+          ${row('CPF OA', money(f.cpfUsed), '', c.sale && c.sale.cpfBack ? `Incl. ${money(c.sale.cpfBack)} sale refund` : '')}
+          ${row('Cash', money(f.cashNeeded), '', [c.sale ? `Sale ${money(Math.max(0, c.saleCash))}` : '', c.savings ? `savings ${money(c.savings)}` : ''].filter(Boolean).join(' + '))}
+          ${row('Less stamp duty and fees', money(-f.fees), 'minor', `BSD ${money(f.BSD)}${f.ABSDamt ? ` · ABSD ${money(f.ABSDamt)}` : ''} · legal, agent, other`)}
+          ${row('Max purchase price', money(b.maxPrice), 'total')}
+          ${b.cpfIdle > 1000 ? row('CPF not usable', money(b.cpfIdle), 'minor', 'Cash rule binds first') : ''}
         </table></div>`;
     }
-    el.innerHTML = loanCard + prepCard + costCard + saleCard + flagsHtml(c);
+
+    // 4. At the entered price
+    if (at) {
+      const need = c.shortfall > 0.5;
+      html += `<div class="card prep"><div class="card-head"><span>At ${money(at.P)}</span><em>${need ? 'Cash short' : 'Covered'}</em></div>
+        <table class="rows">
+          ${row(c.hdbLoan ? 'HDB loan' : 'Bank loan', money(at.loan))}
+          ${row('CPF OA used', money(at.cpfUsed), '', 'Downpayment, stamp duties, legal')}
+          ${row('Cash needed', money(at.cashNeeded), '', 'Min. cash plus fees CPF can\'t pay')}
+          ${row('Cash available', money(c.cashAvail), 'minor', [c.sale ? `Sale ${money(c.saleCash)}` : '', `savings ${money(c.savings)}`].filter(Boolean).join(' + '))}
+          ${need ? row('Cash short by', money(c.shortfall), 'total hl') : row('Cash left over', money(-c.shortfall), 'total good')}
+          ${c.absdRefund && at.ABSDamt ? row('ABSD refunded later', money(at.ABSDamt), 'minor', 'Once the first home is sold within 6 months') : ''}
+          ${row('CPF left in OA', money(at.poolLeft + c.keep), 'minor', c.keep ? `Incl. ${money(c.keep)} kept aside` : '')}
+          ${row('Cash due before completion', money(c.upfront), 'hl', `${c.depositLbl}${c.dutyUpfront ? ' + stamp duty in 14 days' : ''}${c.fresh || !c.dutyUpfront ? '' : '. CPF refunds the duty at completion'}`)}
+        </table></div>
+        <div class="card cost"><div class="card-head"><span>Purchase costs</span><em>${money(at.P)}</em></div>
+        <table class="rows">
+          ${row('Downpayment', money(at.D), '', `${pct(at.D / at.P, 1)} of price`)}
+          ${at.minCash > 0 ? row(at.cov ? 'of which cash only' : `of which min. cash (${pct(c.minCashPct, 0)})`, money(at.minCash), 'minor', at.cov ? `Incl. ${money(at.cov)} above valuation` : '') : ''}
+          ${row("Buyer's Stamp Duty", money(at.BSD))}
+          ${row("Additional Buyer's Stamp Duty", money(at.ABSDamt), at.ABSDamt ? 'hl' : '', at.ABSDamt ? `${pct(c.absdRate, 0)}${c.absdRefund ? ' · refundable' : ''}` : c.absdNote || 'Not payable')}
+          ${row('Legal fees', money(c.legalBuy))}
+          ${c.fresh ? '' : row("Buyer's agent fee", money(at.agentBuy), '', '1% + 9% GST')}
+          ${at.valFee ? row('Valuation fee', money(at.valFee)) : ''}
+          ${row('Mortgage stamp duty', money(at.mortgageDuty), '', '0.4% of loan, max $500')}
+          ${c.otherBuy ? row('Other costs', money(c.otherBuy)) : ''}
+          ${row('Total excluding loan', money(at.totalCost - at.loan), 'total')}
+        </table></div>`;
+    }
+    el.innerHTML = html + flagsHtml(c);
     updateDock(c); buildReport(c);
   }
   const flagsHtml = c => c.flags.length ? `<div class="flags">${c.flags.map(([k, t]) => `<div class="flag ${k}">${t}</div>`).join('')}</div>` : '';
 
   function updateDock(c) {
-    document.getElementById('dock-loan').textContent = c.income ? money(c.maxLoan) : '—';
+    document.getElementById('dock-loan').textContent = c.budget ? money(c.budget.maxPrice) : '—';
     const lbl = document.getElementById('dock-cash-lbl'), v = document.getElementById('dock-cash');
-    if (!c.P || !c.income) { lbl.textContent = 'Cash top-up'; v.textContent = '—'; return; }
-    lbl.textContent = c.topUp > 0.5 ? 'Cash top-up' : 'Cash left over';
-    v.textContent = money(Math.abs(c.topUp));
+    if (c.at) { lbl.textContent = c.shortfall > 0.5 ? 'Cash short' : 'Cash left over'; v.textContent = money(Math.abs(c.shortfall)); }
+    else { lbl.textContent = 'Loan from income'; v.textContent = c.income ? money(c.incomeLoanR) : '—'; }
   }
 
   function buildReport(c) {
     const who = c.B.map((b, i) => `<div class="r-box"><small>Buyer ${i + 1}</small>${CIT[b.cit]}, ${has(b.age) ? b.age : '—'} · ${money(num(b.fixed) + num(b.variable))}/mth · OA ${money(num(b.oa))}</div>`).join('');
-    const buy = `<div class="r-box"><small>Purchase</small>${c.hdb ? 'HDB' : c.ec ? 'New EC' : c.fresh ? 'New launch' : 'Private resale'} ${c.P ? money(c.P) : ''} · ${c.hdbLoan ? 'HDB loan' : 'Bank loan'} ${c.rate}% · ${yrs(c.tenure)}</div>`;
+    const buy = `<div class="r-box"><small>Purchase</small>${c.hdb ? 'HDB' : c.ec ? 'New EC' : c.fresh ? 'New launch' : 'Private resale'} ${c.at ? money(c.at.P) : ''} · ${c.hdbLoan ? 'HDB loan' : 'Bank loan'} ${c.rate}% · ${yrs(c.tenure)}</div>`;
     const sale = c.sale ? `<div class="r-box"><small>Sale</small>${state.sale.type === 'hdb' ? 'HDB' : 'Private'} ${money(c.sale.price)}</div>` : '';
     const t = new Date();
     document.getElementById('report').innerHTML = `<div class="r-who">${who}${buy}${sale}</div>`;
@@ -747,7 +828,7 @@
   function update(rerenderBuy) {
     save();
     const c = compute();
-    if (rerenderBuy) renderBuy(c);
+    if (rerenderBuy) renderLoan(c);
     else syncTenure(c);
     renderResults(c);
   }
@@ -778,7 +859,7 @@
       if (v == null && (t.dataset.path === 'buy.legal' || t.dataset.path === 'sale.legal' || t.dataset.path === 'buy.valFee')) return renderAll();
       t.value = comma(v);
     }
-    if (t.dataset && t.dataset.path === 'buy.tenure') { const c = compute(); if (has(state.buy.tenure) && Number(state.buy.tenure) !== c.tenure) { state.buy.tenure = String(c.tenure); save(); } renderBuy(c); }
+    if (t.dataset && t.dataset.path === 'buy.tenure') { const c = compute(); if (has(state.buy.tenure) && Number(state.buy.tenure) !== c.tenure) { state.buy.tenure = String(c.tenure); save(); } renderLoan(c); }
   });
   document.addEventListener('change', e => {
     const t = e.target;
