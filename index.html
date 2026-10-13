@@ -607,7 +607,13 @@
         hdbCut = Math.floor(Math.min(pool, loan, Math.max(0, cpfCap - cpfDown)));
         loan -= hdbCut; cpfDown += hdbCut; pool -= hdbCut;
       }
-      if (sale && sale.mustUse > 0) { cashCut = Math.floor(Math.min(sale.mustUse, loan)); loan -= cashCut; }
+      // 2nd HDB loan: the required sale cash pays the cash part of the price first;
+      // only what is left over reduces the loan.
+      if (sale && sale.mustUse > 0) {
+        const gap = Math.max(0, P - loan - cpfDown);
+        cashCut = Math.floor(clamp(sale.mustUse - gap, 0, loan));
+        loan -= cashCut;
+      }
       D = P - loan;
       const mortgageDuty = loan > 0 ? Math.min(500, Math.floor(loan * 0.004)) : 0;
       const cashDown = D - cpfDown;
