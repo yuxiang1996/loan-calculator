@@ -899,7 +899,10 @@
       const nextRows = c.B.map((b, i) => row(`Buyer ${i + 1}`, money(c.oaBy[i] + (s.backBy[i] || 0)), '', `OA ${money(c.oaBy[i])} + refund ${money(s.backBy[i] || 0)}`)).join('');
       html += `<div class="card proceeds"><div class="card-head"><span>Sale proceeds</span><em>${state.sale.type === 'hdb' ? 'HDB' : 'Private'} · ${money(s.price)}</em></div>
         <table class="rows">
-          ${row('Less sale fees', money(-(s.agent + s.legal + s.ssd + s.penalty)), 'minor', [`Agent ${money(s.agent)}`, `legal ${money(s.legal)}`, s.ssd ? `SSD ${money(s.ssd)}` : '', s.penalty ? `bank penalty ${money(s.penalty)}` : ''].filter(Boolean).join(' · '))}
+          ${row('Selling price', money(s.price))}
+          ${row('Less loan and CPF refund', money(-(s.loan + s.cpfBack)), '', `Loan ${money(s.loan)} · CPF ${money(s.cpfBack)}`)}
+          ${row('Less sale fees', money(-(s.agent + s.legal + s.ssd + s.penalty)), '', [`Agent ${money(s.agent)}`, `legal ${money(s.legal)}`, s.ssd ? `SSD ${money(s.ssd)}` : '', s.penalty ? `bank penalty ${money(s.penalty)}` : ''].filter(Boolean).join(' · '))}
+          ${s.share != null ? row('Cash proceeds', money(s.cash), 'total') : ''}
           ${row(s.share != null ? "Cash to client (her share)" : 'Cash proceeds', money(s.clientCash), 'total', s.rule50 && s.mustUse > 0 ? `${money(s.mustUse)} must go into the next flat (2nd HDB loan)` : '')}
           ${row('CPF available for next home', money(c.poolStart), 'total', `Incl. ${money(s.cpfBack)} refunded from the sale`)}
         </table>
