@@ -178,46 +178,65 @@
   .dock a { margin-left: auto; color: var(--ink); background: #fff; text-decoration: none; font-size: 13px; font-weight: 600; padding: 10px 14px; border-radius: 999px; white-space: nowrap; }
   @media (min-width: 760px) { .dock { display: none; } }
 
-  #report, #r-footer { display: none; }
-  @page { size: A4 portrait; margin: 9mm 10mm; }
+  #report { display: none; }
+  /* Margin 0 stops the browser printing its own date, title and URL in the page margins. */
+  @page { size: A4 portrait; margin: 0; }
   @media print {
     * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    body { background: #fff; font-size: 11px; }
+    html, body { background: #fff; }
+    body { font-size: 10px; }
     .wrap { max-width: none; padding: 0; }
-    header { margin-bottom: 6px; }
-    h1 { font-size: 17px; }
-    .inputs, .actions, .note, .dock, .disclaimer, .tagline { display: none !important; }
-    .layout { display: block; }
-    .results { position: static; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; max-height: none; overflow: visible; }
-    .results .flags { grid-column: 1 / -1; }
-    /* the budget leads the PDF: full width, figure on the left, breakdown on the right */
-    .card.budget { order: -1; grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1.5fr; align-items: center; }
-    .card.budget .card-head { grid-column: 1 / -1; }
-    .card.budget .hero { padding: 8px 14px; }
-    .card.budget .hero .big { font-size: 30px; }
-    .card.budget .rows { border-left: 1px solid var(--line); }
-    .card.cost { grid-column: 1 / -1; }
-    .card.cost .split { display: grid; grid-template-columns: 1fr 1fr; align-items: start; }
-    .card.cost .split > table + table { border-left: 1px solid var(--line); }
-    .hero .why, .rows tr.minor td, .rows tr.total td { font-size: 11px; }
-    .rows tr.total td { font-size: 11.5px; }
-    .meter { font-size: 11px; }
-    .card, .flag { box-shadow: none; border: 1px solid var(--line); }
-    .card { break-inside: avoid; }
-    .card-head { padding: 5px 10px; font-size: 10.5px; }
-    .hero { padding: 8px 10px 2px; }
-    .hero .big { font-size: 22px; }
-    .rows td { padding: 3px 10px; font-size: 11px; }
-    .rows td small { font-size: 9.5px; }
-    .meters { padding: 2px 10px 8px; gap: 4px; }
-    .flag { font-size: 10.5px; padding: 4px 8px 4px 12px; }
-    #report { display: block; margin-bottom: 8px; }
-    #r-footer { display: block; }
-    .r-who { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
-    .r-box { border: 1px solid var(--line); border-radius: 8px; padding: 5px 9px; font-size: 10.5px; }
-    .r-box small { display: block; color: var(--muted); font-size: 9.5px; text-transform: uppercase; letter-spacing: .08em; }
-    .r-disc { margin: 8px 0 0; font-size: 10.5px; border: 1px solid var(--line); border-left: 4px solid var(--gap); border-radius: 6px; padding: 5px 10px; }
-    .r-foot { color: var(--muted); font-size: 9.5px; margin: 4px 0 0; }
+    .wrap > :not(#report), .dock { display: none !important; }
+    #report { display: block; color: var(--ink); }
+    .rp { padding: 12mm 13mm 10mm; }
+    .rp-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; padding-bottom: 9px; border-bottom: 2px solid var(--ink); }
+    .rp-head h1 { font-size: 20px; letter-spacing: -0.02em; margin: 0 0 3px; }
+    .rp-head p { margin: 0; font-size: 9.5px; color: var(--muted); }
+    .rp-tag { text-align: right; font-size: 9.5px; color: var(--muted); line-height: 1.5; }
+    .rp-tag b { display: block; font-size: 11px; color: var(--ink); }
+    .rp-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 12px 0 14px; }
+    .rp-kpi { border: 1px solid var(--line); border-top: 3px solid var(--k); border-radius: 6px; padding: 7px 10px 8px; }
+    .rp-kpi small { display: block; font-size: 8px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); font-weight: 700; }
+    .rp-kpi b { display: block; font-size: 17px; letter-spacing: -0.02em; margin-top: 3px; font-variant-numeric: tabular-nums; }
+    .rp-kpi em { display: block; font-style: normal; font-size: 8.5px; color: var(--muted); margin-top: 1px; }
+    .rp-kpi.budget { --k: #5b4a9e; } .rp-kpi.budget b { color: #5b4a9e; }
+    .rp-kpi.loan { --k: var(--who); } .rp-kpi.sale { --k: var(--sale); } .rp-kpi.cpf { --k: var(--buy); }
+    .rp-kpi.warn { --k: var(--gap); } .rp-kpi.warn b { color: var(--gap); }
+    .rp-kpi.good { --k: var(--sale); } .rp-kpi.good b { color: var(--sale); }
+    .rp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 18px; align-items: start; }
+    .rp-sec { break-inside: avoid; margin-bottom: 12px; }
+    .rp-grid .rp-sec, .rp-block > .rp-sec { margin-bottom: 0; }
+    .rp-col > .rp-sec + .rp-sec { margin-top: 16px; }
+    .rp-block { margin-top: 16px; }
+    .rp-p2 { break-before: page; }
+    .rp-head.small h1 { font-size: 15px; }
+    .rp-sec h2 { display: flex; align-items: center; gap: 7px; font-size: 9px; letter-spacing: .12em; text-transform: uppercase; margin: 0 0 4px; color: var(--ink); }
+    .rp-sec h2::before { content: ""; width: 8px; height: 8px; border-radius: 2px; background: var(--k, var(--ink)); }
+    .rp-sec h2 span { margin-left: auto; letter-spacing: 0; text-transform: none; font-weight: 600; color: var(--muted); }
+    .rp-sec.budget { --k: #5b4a9e; } .rp-sec.loan { --k: var(--who); } .rp-sec.sale { --k: var(--sale); }
+    .rp-sec.cost { --k: var(--buy); } .rp-sec.who { --k: var(--muted); }
+    .rp-t { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+    .rp-t td { padding: 3.5px 0; border-bottom: 1px solid #eceeec; vertical-align: top; font-size: 10px; }
+    .rp-t td:last-child { text-align: right; white-space: nowrap; padding-left: 10px; font-weight: 600; }
+    .rp-t td small { display: block; font-size: 8.5px; color: var(--muted); font-weight: 400; }
+    .rp-t tr.m td { color: var(--muted); font-size: 9.5px; padding-top: 2px; }
+    .rp-t tr.m td:first-child { padding-left: 10px; }
+    .rp-t tr.m td:last-child { font-weight: 500; }
+    .rp-t tr.tot td { border-top: 1.5px solid var(--ink); border-bottom: 0; font-weight: 700; font-size: 10.5px; padding-top: 5px; }
+    .rp-t tr.big td { font-size: 12px; color: var(--k); }
+    .rp-t tr.sub td { font-size: 8px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); font-weight: 700; padding-top: 9px; border-bottom: 1px solid var(--line); }
+    .rp-t tr.sub td:last-child { text-align: left; }
+    .rp-t tr.hl td:last-child { color: var(--gap); }
+    .rp-t tr.big.hl td { color: var(--gap); }
+    .rp-t tr.ok td { color: var(--sale); }
+    .rp-two { display: grid; grid-template-columns: 1fr 1fr; gap: 0 18px; }
+    .rp-notes { margin: 4px 0 0; padding: 0; list-style: none; break-inside: avoid; }
+    .rp-notes li { position: relative; padding: 0 0 4px 11px; font-size: 9.5px; line-height: 1.45; }
+    .rp-notes li::before { content: ""; position: absolute; left: 0; top: 5px; width: 5px; height: 5px; border-radius: 50%; background: var(--who); }
+    .rp-notes li.warn::before { background: var(--gap); }
+    .rp-notes li.good::before { background: var(--sale); }
+    .rp-foot { margin-top: 12px; padding-top: 7px; border-top: 1px solid var(--line); font-size: 8.5px; color: var(--muted); line-height: 1.5; break-inside: avoid; }
+    .rp-foot b { color: var(--ink); }
   }
 </style>
 </head>
@@ -858,16 +877,143 @@
     else { lbl.textContent = 'Loan from income'; v.textContent = c.income ? money(c.incomeLoanR) : '—'; }
   }
 
+  // ---------- Print report: a client-ready summary, separate from the on-screen cards ----------
   function buildReport(c) {
-    const who = c.B.map((b, i) => `<div class="r-box"><small>Buyer ${i + 1}</small>${CIT[b.cit]}, ${has(b.age) ? b.age : '—'} · ${money(num(b.fixed) + num(b.variable))}/mth · OA ${money(num(b.oa))}</div>`).join('');
-    const buy = `<div class="r-box"><small>Purchase</small>${c.hdb ? 'HDB' : c.ec ? 'New EC' : c.fresh ? 'New launch' : 'Private resale'} ${c.at ? money(c.at.P) : ''} · ${c.hdbLoan ? 'HDB loan' : 'Bank loan'} ${c.rate}% · ${yrs(c.tenure)}</div>`;
-    const sale = c.sale ? `<div class="r-box"><small>Sale</small>${state.sale.type === 'hdb' ? 'HDB' : 'Private'} ${money(c.sale.price)}</div>` : '';
+    const r = (label, value, cls = '', note = '') => `<tr class="${cls}"><td>${label}${note ? `<small>${note}</small>` : ''}</td><td>${value}</td></tr>`;
+    const sub = t => `<tr class="sub"><td colspan="2">${t}</td></tr>`;
+    const sec = (cls, title, aside, body) => `<section class="rp-sec ${cls}"><h2>${title}${aside ? `<span>${aside}</span>` : ''}</h2>${body}</section>`;
+    const typeLbl = c.hdb ? 'HDB resale' : c.ec ? 'New EC' : c.fresh ? 'New launch' : 'Private resale';
+    const loanLbl = c.hdbLoan ? `HDB loan · ${c.rate}% fixed` : `Bank loan · ${c.rate}%`;
+    const at = c.at, b = c.budget, s = c.sale;
+
+    // Key figures
+    const k = [];
+    if (b) k.push(['budget', 'Max purchase price', money(b.maxPrice), 'Loan + CPF + cash, after fees']);
+    if (at) {
+      k.push(['loan', 'Loan at this price', money(at.loan), `${pct(at.loan / at.P, 1)} of ${money(at.P)}`]);
+      k.push(['cpf', 'Cash needed', money(at.cashNeeded), `CPF ${money(at.cpfUsed)} also used`]);
+      k.push([c.shortfall > 0.5 ? 'warn' : 'good', c.shortfall > 0.5 ? 'Cash top-up needed' : 'Cash left over', money(Math.abs(c.shortfall)), `Of ${money(c.cashAvail)} available`]);
+    } else {
+      k.push(['loan', 'Loan from income', c.income ? money(c.incomeLoanR) : '—', `${yrs(c.tenure)} at ${c.stress}% stress test`]);
+      if (s) k.push(['sale', 'Cash from sale', money(s.cash), `After loan, CPF refund and fees`]);
+      k.push(['cpf', 'CPF available', money(c.poolStart), s && s.cpfBack ? `Incl. ${money(s.cpfBack)} sale refund` : 'CPF OA']);
+      if (!s) k.push(['sale', 'Cash savings', money(c.savings), 'For the next home']);
+    }
+
+    // Buyers
+    const who = sec('who', 'Buyers', state.n > 1 ? (state.married ? 'Married couple' : 'Joint buyers') : '',
+      `<table class="rp-t">${c.B.map((x, i) => r(`Buyer ${i + 1} · ${CIT[x.cit]}${has(x.age) ? `, ${x.age}` : ''}`,
+        `${money(num(x.fixed) + num(x.variable))}/mth`, '', `CPF OA ${money(num(x.oa))}${num(x.cash) ? ` · cash ${money(num(x.cash))}` : ''}${num(x.debts) ? ` · debts ${money(num(x.debts))}/mth` : ''}`)).join('')}</table>`);
+
+    // Max affordability
+    let afford = '';
+    if (b) {
+      const f = b.f;
+      afford = sec('budget', 'Max affordability', typeLbl, `<table class="rp-t">
+        ${r(c.hdbLoan ? 'HDB loan' : 'Bank loan', money(f.loan))}
+        ${r('CPF OA', money(f.cpfUsed), '', s && s.cpfBack ? `Incl. ${money(s.cpfBack)} refunded from the sale` : '')}
+        ${r('Cash', money(f.cashNeeded), '', [s ? `Sale proceeds ${money(Math.max(0, c.saleCash))}` : '', c.savings ? `savings ${money(c.savings)}` : ''].filter(Boolean).join(' + '))}
+        ${r('Total funds', money(f.loan + f.cpfUsed + f.cashNeeded), 'tot')}
+        ${sub('Less stamp duty and fees')}
+        ${r("Buyer's Stamp Duty", money(-f.BSD))}
+        ${f.ABSDamt ? r("Additional Buyer's Stamp Duty", money(-f.ABSDamt), 'hl', `${pct(c.absdRate, 0)}${c.absdRefund ? ', refundable' : ''}`) : ''}
+        ${r('Legal fees', money(-c.legalBuy))}
+        ${c.fresh ? '' : r("Buyer's agent fee", money(-f.agentBuy), '', '1% + 9% GST')}
+        ${f.valFee ? r('Valuation fee', money(-f.valFee)) : ''}
+        ${r('Mortgage stamp duty', money(-f.mortgageDuty))}
+        ${c.otherBuy ? r('Other costs', money(-c.otherBuy)) : ''}
+        ${r('Max purchase price', money(b.maxPrice), 'tot big')}
+      </table>`);
+    }
+
+    // Loan from income
+    const loan = !c.income ? '' : sec('loan', 'Loan from income', loanLbl, `<table class="rp-t">
+      ${r('Loan supported by income', money(c.incomeLoanR), '', `${c.incomeRule === 'MSR' ? 'MSR 30%' : 'TDSR 55%'} at ${c.stress}% stress test`)}
+      ${at ? r('Loan by LTV at this price', money(at.ltvLoan), '', `${pct(c.ltv, 1)} of ${at.cov ? 'valuation' : 'price'}`) : r('Loan-to-value', pct(c.ltv, 1), '', c.hdbLoan ? 'HDB loan' : c.loansOut ? 'Outstanding home loan' : c.lowTier ? 'Lower tier — tenure or age' : 'First housing loan')}
+      ${r('Loan tenure', yrs(c.tenure), '', c.agesKnown ? `${state.n > 1 ? 'Income-weighted' : 'Buyer'} age ${c.iwaa.toFixed(1)}` : '')}
+      ${at && at.loan !== at.maxLoan ? r('Loan taken', money(at.loan), '', [at.hdbCut ? `CPF in first −${money(at.hdbCut)}` : '', at.cashCut ? `50% sale cash −${money(at.cashCut)}` : ''].filter(Boolean).join(' · ')) : ''}
+      ${r('Monthly instalment', money(c.inst), 'tot', `At ${c.rate}%${c.hdbLoan ? ' fixed' : ''}; ${money(c.instStress)} at stress rate`)}
+      ${c.hdbLoan ? r('MSR used', `${pct(c.msrUsed)} of 30%`, 'm') : r('TDSR used', `${pct(c.tdsrUsed)} of 55%`, 'm') + (c.hdb || c.ec ? r('MSR used', `${pct(c.msrUsed)} of 30%`, 'm') : '')}
+    </table>`);
+
+    // Sale proceeds and CPF for the next home
+    let sale = '';
+    if (s) {
+      const split = c.owners.length > 1;
+      sale = sec('sale', 'Sale of current home', state.sale.type === 'hdb' ? 'HDB' : 'Private', `<table class="rp-t">
+        ${r('Selling price', money(s.price))}
+        ${r('Outstanding loan', money(-s.loan))}
+        ${r('CPF refund to OA', money(-s.cpfBack), '', 'Principal + accrued interest')}
+        ${split ? c.owners.map(i => r(`Buyer ${i + 1}`, money(-s.backBy[i]), 'm')).join('') : ''}
+        ${r("Seller's agent fee", money(-s.agent), '', '2% + 9% GST')}
+        ${r('Legal fees', money(-s.legal))}
+        ${s.ssd ? r("Seller's Stamp Duty", money(-s.ssd), 'hl', s.ssdNote) : ''}
+        ${s.penalty ? r('Bank penalty / clawback', money(-s.penalty)) : ''}
+        ${s.levy ? r('HDB resale levy', money(-s.levy)) : ''}
+        ${r('Cash proceeds', money(s.cash), 'tot big')}
+        ${s.rule50 && s.mustUse > 0 ? r('of which must go into the next flat', money(s.mustUse), 'm', `2nd HDB loan rule; client keeps ${money(s.keepCash)}`) : ''}
+        ${sub('CPF OA for the next home')}
+        ${c.B.map((x, i) => r(`Buyer ${i + 1}`, money(c.oaBy[i] + (s.backBy[i] || 0)), '', `OA ${money(c.oaBy[i])} + refund ${money(s.backBy[i] || 0)}`)).join('')}
+        ${c.grants ? r('CPF housing grants', money(c.grants)) : ''}
+        ${r('CPF available', money(c.poolStart), 'tot')}
+      </table>`);
+    }
+
+    // Purchase at the entered price
+    let cost = '';
+    if (at) {
+      const need = c.shortfall > 0.5;
+      cost = sec('cost', `Purchase at ${money(at.P)}`, '', `<div class="rp-two"><table class="rp-t">
+        ${r('Purchase price', money(at.P), '', at.cov ? `Valuation ${money(at.V)}` : '')}
+        ${r(`Less ${c.hdbLoan ? 'HDB' : 'bank'} loan`, money(-at.loan))}
+        ${r('Downpayment', money(at.D), 'tot', `${pct(at.D / at.P, 1)} of price`)}
+        ${r('paid by CPF', money(at.cpfDown), 'm')}
+        ${r('paid by cash', money(at.cashDown), 'm', at.cov ? `Incl. ${money(at.cov)} above valuation` : '')}
+        ${sub('Stamp duty and fees')}
+        ${r("Buyer's Stamp Duty", money(at.BSD), '', 'CPF or cash')}
+        ${at.ABSDamt ? r("Additional Buyer's Stamp Duty", money(at.ABSDamt), 'hl', `${pct(c.absdRate, 0)}${c.absdRefund ? ', refundable' : ''}`) : ''}
+        ${r('Legal fees', money(c.legalBuy), '', 'CPF or cash')}
+        ${c.fresh ? '' : r("Buyer's agent fee", money(at.agentBuy), '', 'Cash only')}
+        ${at.valFee ? r('Valuation fee', money(at.valFee), '', 'Cash only') : ''}
+        ${r('Mortgage stamp duty', money(at.mortgageDuty), '', 'CPF or cash')}
+        ${c.otherBuy ? r('Other costs', money(c.otherBuy), '', 'Cash only') : ''}
+        ${r('Total fees', money(at.fees), 'tot')}
+      </table><table class="rp-t">
+        ${sub('How it is paid')}
+        ${r(c.hdbLoan ? 'HDB loan' : 'Bank loan', money(at.loan))}
+        ${r('CPF OA', money(at.cpfUsed), '', c.cpfUseIn == null ? 'All usable CPF' : `Chosen ${money(c.cpfLimit)} of ${money(c.poolStart)}`)}
+        ${r('Cash', money(at.cashNeeded), '', `Downpayment ${money(at.cashDown)} + fees ${money(at.cashFees)}`)}
+        ${r('Total', money(at.loan + at.cpfUsed + at.cashNeeded), 'tot')}
+        ${sub('Cash check')}
+        ${r('Cash available', money(c.cashAvail), '', [s ? `Sale ${money(c.saleCash)}` : '', `savings ${money(c.savings)}`].filter(Boolean).join(' + '))}
+        ${r(need ? 'Cash top-up needed' : 'Cash left over', money(Math.abs(c.shortfall)), `tot big ${need ? 'hl' : 'ok'}`)}
+        ${c.absdRefund && at.ABSDamt ? r('ABSD refunded later', money(at.ABSDamt), 'm', 'If the first home is sold within 6 months') : ''}
+        ${r('CPF left in OA', money(c.poolStart - at.cpfUsed), 'm')}
+        ${r('Cash due before completion', money(c.upfront), '', `${c.depositLbl}${c.dutyUpfront ? ' + stamp duty within 14 days' : ''}`)}
+      </table></div>`);
+    }
+
+    const notes = c.flags.length ? sec('who', 'Notes', '', `<ul class="rp-notes">${c.flags.map(([kind, text]) => `<li class="${kind}">${text}</li>`).join('')}</ul>`) : '';
     const t = new Date();
-    document.getElementById('report').innerHTML = `<div class="r-who">${who}${buy}${sale}</div>`;
-    let f = document.getElementById('r-footer');
-    if (!f) { f = document.createElement('div'); f.id = 'r-footer'; document.querySelector('.layout').after(f); }
-    f.innerHTML = `<p class="r-disc"><b>Disclaimer:</b> All figures are estimates for reference only and are not a loan approval or financial advice. Final loan amounts depend on the bank's or HDB's own assessment, valuation and prevailing rules.</p>
-      <p class="r-foot">Prepared ${fmtDate(t)}. Rules as at Oct 2026: TDSR 55%, MSR 30%, stress rate ${c.stress}%, LTV by tenure and age, IRAS BSD/ABSD/SSD rates.</p>`;
+    const foot = `<footer class="rp-foot"><b>Disclaimer:</b> All figures are estimates for reference only and are not a loan approval or financial advice. Final loan amounts depend on the bank's or HDB's own assessment, valuation and prevailing rules.
+        Rules used: TDSR 55%, MSR 30%, stress test ${c.stress}%, LTV by tenure and age, IRAS BSD/ABSD/SSD rates, HDB resale terms clause 24.</footer>`;
+    // With a sale the purchase breakdown gets its own page; without one it fits under the rest.
+    const page2 = !!(cost && s);
+    document.getElementById('report').innerHTML = `<div class="rp">
+      <header class="rp-head">
+        <div><h1>Home Loan &amp; Cash Plan</h1><p>Prepared ${fmtDate(t)} · Singapore rules as at Oct 2026</p></div>
+        <div class="rp-tag"><b>${typeLbl}</b>${loanLbl} · ${yrs(c.tenure)}</div>
+      </header>
+      <div class="rp-kpis">${k.slice(0, 4).map(([cls, l, v, e]) => `<div class="rp-kpi ${cls}"><small>${l}</small><b>${v}</b><em>${e}</em></div>`).join('')}</div>
+      <div class="rp-grid"><div class="rp-col">${afford || loan}</div><div class="rp-col">${afford ? loan : ''}${who}</div></div>
+      ${s ? `<div class="rp-grid rp-block"><div class="rp-col">${sale}</div><div class="rp-col">${notes}</div></div>` : ''}
+      ${cost && !page2 ? `<div class="rp-block">${cost}</div>` : ''}
+      ${s ? '' : `<div class="rp-block">${notes}</div>`}
+      ${page2 ? '' : foot}
+    </div>
+    ${page2 ? `<div class="rp rp-p2">
+      <header class="rp-head small"><div><h1>Home Loan &amp; Cash Plan</h1><p>Purchase breakdown · ${fmtDate(t)}</p></div><div class="rp-tag"><b>${typeLbl}</b>${loanLbl}</div></header>
+      <div class="rp-block">${cost}</div>${foot}</div>` : ''}`;
   }
 
   // ---------- Events ----------
