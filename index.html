@@ -718,6 +718,7 @@
         <div class="empty">Enter each buyer's age and income to see how much they can borrow.</div></div>`;
     } else {
       const big = at ? at.maxLoan : c.incomeLoanR;
+      const cut = at && at.loan !== at.maxLoan;
       const why = !at ? `${c.incomeRule === 'MSR' ? 'MSR 30%' : 'TDSR 55%'} at ${c.stress}% stress rate`
         : at.binding === 'LTV' ? `At this price, capped by LTV (${pct(c.ltv, 1)} of ${at.cov ? 'valuation' : 'price'})` : `At this price, capped by income — ${at.binding === 'MSR' ? 'MSR 30%' : 'TDSR 55%'}`;
       html += `<div class="card loan"><div class="card-head"><span>${at ? 'Maximum loan' : 'Loan from income'}</span><em>${typeLbl} · ${loanLbl}</em></div>
@@ -731,8 +732,8 @@
           ${row('At stress rate', money(c.instStress), 'minor')}
         </table>
         <div class="meters">
-          ${c.hdbLoan ? '' : meter('TDSR at stress rate', c.tdsrUsed, TDSR)}
-          ${c.hdb || c.ec ? meter('MSR at stress rate', c.msrUsed, MSR) : ''}
+          ${c.hdbLoan ? '' : meter(`TDSR${cut ? ' on loan you take' : ' at stress rate'}`, c.tdsrUsed, TDSR)}
+          ${c.hdb || c.ec ? meter(`MSR${cut ? ' on loan you take' : ' at stress rate'}`, c.msrUsed, MSR) : ''}
         </div></div>`;
     }
 
