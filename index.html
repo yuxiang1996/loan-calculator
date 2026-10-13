@@ -782,7 +782,15 @@
           ${row(c.hdbLoan ? 'HDB loan' : 'Bank loan', money(f.loan))}
           ${row('CPF OA', money(f.cpfUsed), '', c.sale && c.sale.cpfBack ? `Incl. ${money(c.sale.cpfBack)} sale refund` : '')}
           ${row('Cash', money(f.cashNeeded), '', [c.sale ? `Sale ${money(Math.max(0, c.saleCash))}` : '', c.savings ? `savings ${money(c.savings)}` : ''].filter(Boolean).join(' + '))}
-          ${row('Less stamp duty and fees', money(-f.fees), 'minor', `BSD ${money(f.BSD)}${f.ABSDamt ? ` · ABSD ${money(f.ABSDamt)}` : ''} · legal, agent, other`)}
+          ${row('Total funds', money(f.loan + f.cpfUsed + f.cashNeeded), 'total')}
+          <tr class="sub"><td colspan="2">Less stamp duty and fees</td></tr>
+          ${row("Buyer's Stamp Duty", money(-f.BSD))}
+          ${f.ABSDamt ? row("Additional Buyer's Stamp Duty", money(-f.ABSDamt), 'hl', `${pct(c.absdRate, 0)}${c.absdRefund ? ' · refundable' : ''}`) : ''}
+          ${row('Legal fees', money(-c.legalBuy))}
+          ${c.fresh ? '' : row("Buyer's agent fee", money(-f.agentBuy), '', '1% + 9% GST')}
+          ${f.valFee ? row('Valuation fee', money(-f.valFee)) : ''}
+          ${row('Mortgage stamp duty', money(-f.mortgageDuty), '', '0.4% of loan, max $500')}
+          ${c.otherBuy ? row('Other costs', money(-c.otherBuy)) : ''}
           ${row('Max purchase price', money(b.maxPrice), 'total')}
           ${b.cpfIdle > 1000 ? row('CPF not usable', money(b.cpfIdle), 'minor', 'Cash rule binds first') : ''}
         </table></div>`;
