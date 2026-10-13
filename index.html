@@ -323,7 +323,7 @@
   const defaults = () => ({
     n: 1, married: true,
     b: [blankBuyer(), blankBuyer()],
-    buy: { type: 'private', mode: 'resale', price: '', val: '', lease: '', loan: 'bank', rate: '2.0', stress: '4.0', tenure: '', grants: '', keep: '', legal: null, hdbLegal: false, valFee: null, other: '', levyOn: false, levyType: '4', levySingle: false, levy: null, cashUse: '' },
+    buy: { type: 'private', mode: 'resale', price: '', val: '', lease: '', loan: 'bank', rate: '2.0', stress: '4.0', tenure: '', grants: '', keep: '', legal: null, hdbLegal: false, valFee: null, other: '', levyOn: false, levyType: '4', levySingle: false, levy: null, grantPHG: false, cashUse: '' },
     sale: { on: false, type: 'hdb', owner: 'both', price: '', loan: '', cpf: [{ p: '', i: '' }, { p: '', i: '' }], first: true, repaid: true, hdb2nd: true, contra: true, bought: '', legal: null, hdbLegal: false, penalty: '', share: '' },
   });
   let state;
@@ -514,18 +514,25 @@
       ${levyBlock(c)}`;
   }
 
+  // HDB resale terms cl. 31.1: the owner of a first subsidised flat pays a resale levy on "another subsidised flat"
+  // — a new BTO/SBF, a new EC, or a resale flat bought with a CPF Housing Grant. The Proximity grant alone isn't a subsidy.
   function levyBlock(c) {
     const s = state.buy;
-    if (s.type !== 'ec') return `<p class="fine">No HDB resale levy: it only applies to a second subsidised home (a new BTO, SBF or EC), not to ${s.type === 'hdb' ? 'resale flats' : 'private property'}.</p>`;
-    const head = toggle('buy.levyOn', 'Bought a subsidised flat before', 'From HDB (BTO, SBF, DBSS), a new EC, or a resale flat with a CPF Housing Grant. This EC is then a second subsidised home');
-    if (!s.levyOn) return `<div class="block"><p class="block-title">HDB resale levy</p>${head}</div>`;
-    return `<div class="block"><p class="block-title">HDB resale levy</p>${head}
+    if (s.type === 'private') return `<p class="fine">No HDB resale levy on private property.</p>`;
+    const grants = s.type === 'hdb' ? num(s.grants) : 0;
+    if (s.type === 'hdb' && !grants) return `<p class="fine">No HDB resale levy on a resale flat bought without a CPF Housing Grant. Add a grant above and it may apply.</p>`;
+    const phg = s.type === 'hdb' ? toggle('buy.grantPHG', 'Grant is the Proximity grant only', 'The Proximity grant is not a housing subsidy, so it never triggers the levy') : '';
+    if (s.type === 'hdb' && s.grantPHG) return `<div class="block"><p class="block-title">HDB resale levy</p>${phg}</div>`;
+    const what = s.type === 'ec' ? 'This EC' : 'A resale flat bought with a CPF Housing Grant';
+    const head = toggle('buy.levyOn', 'Bought a subsidised flat before', `From HDB (BTO, SBF, DBSS), a new EC, or a resale flat with a CPF Housing Grant. ${what} is then a second subsidised home`);
+    if (!s.levyOn) return `<div class="block"><p class="block-title">HDB resale levy</p>${phg}${head}</div>`;
+    return `<div class="block"><p class="block-title">HDB resale levy</p>${phg}${head}
       <div class="grid2" style="margin-top:6px">
         ${selectField('buy.levyType', 'First subsidised flat', LEVY_TYPES)}
         ${moneyField('buy.levy', 'Levy', { value: s.levy ?? (c ? c.levyAuto : LEVY[s.levyType]), hint: 'Cash only' })}
       </div>
       ${toggle('buy.levySingle', 'Bought it as a single', 'Singles who got a CPF Housing Grant pay half')}
-      <p class="fine">Fixed amounts for flats sold on or after 3 Mar 2006. If it was sold before then, the levy is 10–25% of that sale price, so type the amount in.</p>
+      <p class="fine">Fixed amounts for flats sold on or after 3 Mar 2006. If it was sold before then, the levy is 10–25% of that sale price, so type the amount in. For a first-timer and second-timer couple, use the second-timer's first flat.</p>
     </div>`;
   }
 
@@ -665,7 +672,8 @@
     const otherBuy = num(s.other);
     // Resale levy: only a new EC in this calculator is a second subsidised home. Cash only.
     const levyAuto = LEVY[s.levyType] * (s.levySingle ? 0.5 : 1);
-    const levy = ec && s.levyOn ? (s.levy != null ? num(s.levy) : levyAuto) : 0;
+    const levyCase = ec || (hdb && num(s.grants) > 0 && !s.grantPHG);
+    const levy = levyCase && s.levyOn ? (s.levy != null ? num(s.levy) : levyAuto) : 0;
     const valFeeIn = fresh ? 0 : (s.valFee != null ? num(s.valFee) : VAL_FEE);
 
     // Funding for a given price and valuation.
@@ -695,8 +703,12 @@
       // 2nd HDB loan: the required sale cash pays the cash part of the price first;
       // only what is left over reduces the loan.
       if (sale && sale.mustUse > 0) {
+        // Fees are paid in cash first, so the required sale cash can't exceed what is left after them.
+        // Less cash to use never shrinks the loan; it only lowers the price she can reach.
+        const feesCash = (cpfPayable - cpfFees) + agentBuy + valFee + otherBuy + levy + 500;
+        const forced = Math.min(sale.mustUse, Math.max(0, cashAvail - feesCash));
         const gap = Math.max(0, P - loan - cpfDown);
-        cashCut = Math.floor(clamp(sale.mustUse - gap, 0, loan));
+        cashCut = Math.floor(clamp(forced - gap, 0, loan));
         loan -= cashCut;
       }
       D = P - loan;
@@ -723,7 +735,8 @@
         while (top > 0 && !ok(top)) top -= step;
         lo = top; hi = top + step;
         for (let k = 0; k < 30; k++) { const mid = (lo + hi) / 2; if (ok(mid)) lo = mid; else hi = mid; }
-        const maxPrice = Math.floor(lo / 1000) * 1000;
+        // Exact to the dollar: rounding down would leave spare required cash that the 2nd HDB loan rule takes off the loan.
+        const maxPrice = Math.floor(lo);
         const f = fund(maxPrice, maxPrice, poolStart);
         const cpfIdle = f.poolLeft;
         const cashBound = f.cashNeeded >= cashAvail - 1000;
@@ -777,9 +790,10 @@
     if (cpfUseIn != null && cpfUseIn < cpfMin) flags.push(['warn', `With an HDB loan each buyer can keep at most $20,000 in OA, so at least <b>${money(cpfMin)}</b> of CPF must go into the flat.`]);
     if (cpfUseIn != null && cpfUseIn > poolStart) flags.push(['info', `Only ${money(poolStart)} of CPF is available, so that is the most that can be used.`]);
     const grantsIn = hdb ? num(s.grants) : 0;
-    if (grantsIn > 0) flags.push(['info', 'No resale levy on this purchase — HDB charges it only on a second subsidised home (new BTO, SBF or EC), never on a resale flat. But a grant other than the Proximity grant makes this flat a subsidised flat, so a BTO, SBF or EC bought later would attract the levy.']);
+    if (grantsIn > 0 && !s.grantPHG && !s.levyOn) flags.push(['warn', `A CPF Housing Grant makes this resale flat a subsidised flat. If any buyer bought a subsidised flat before (BTO, SBF, DBSS, new EC, or resale with a grant), this is a second subsidised flat and a resale levy applies (HDB resale terms cl. 31.1). Set it in Purchase → HDB resale levy.`]);
+    if (grantsIn > 0 && s.grantPHG) flags.push(['info', 'Proximity grant only: not a housing subsidy, so no resale levy and this flat stays non-subsidised.']);
     if (grantsIn > 30000 && sl.on && sl.type === 'hdb') flags.push(['warn', `${money(grantsIn)} of grants looks high for someone selling an HDB flat. If that flat was subsidised (bought from HDB, or resale with a grant), she is a second-timer and usually qualifies only for the Proximity grant: $30,000 living with parents or children, $20,000 within 4km. A first-timer married to a second-timer can get $40,000 (2–4 room) or $25,000 (5-room+).`]);
-    if (levy > 0) flags.push(['info', `HDB resale levy of <b>${money(levy)}</b> applies to this EC as a second subsidised home. It must be paid in cash, not CPF or the loan. If the old flat is sold after collecting the EC keys, HDB deducts it from the sale proceeds.`]);
+    if (levy > 0) flags.push(['info', `HDB resale levy of <b>${money(levy)}</b> applies to this ${ec ? 'EC' : 'flat'} as a second subsidised home. It must be paid in cash, not CPF or the loan. If the old flat is sold after collecting the new keys, HDB deducts it from the sale proceeds.`]);
     if (ec && !s.levyOn && sl.on && sl.type === 'hdb') flags.push(['warn', 'Check the resale levy: if the HDB flat being sold was bought from HDB (BTO, SBF, DBSS) or with a CPF Housing Grant, this EC is a second subsidised home and a levy of $15,000–$55,000 applies. Switch it on in Purchase.']);
     if (fresh) flags.push(['info', 'New launch: the loan is drawn in stages as the building progresses, so instalments start low and reach the full amount at TOP.']);
     if (lowTier && agesKnown) {
@@ -1158,7 +1172,7 @@
       const m = t.dataset.toggle.match(/^b\.(\d)\.other$/);
       if (m && t.checked && num(state.b[m[1]].owned) < 1) state.b[m[1]].owned = '1';
       if (t.dataset.toggle === 'buy.hdbLegal') state.buy.legal = null;
-      if (t.dataset.toggle === 'buy.levySingle' || t.dataset.toggle === 'buy.levyOn') state.buy.levy = null;
+      if (['buy.levySingle', 'buy.levyOn', 'buy.grantPHG'].includes(t.dataset.toggle)) state.buy.levy = null;
       if (t.dataset.toggle === 'sale.hdbLegal') state.sale.legal = null;
       save(); renderAll();
     }
