@@ -190,6 +190,15 @@
     .layout { display: block; }
     .results { position: static; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; max-height: none; overflow: visible; }
     .results .flags { grid-column: 1 / -1; }
+    /* the budget leads the PDF: full width, figure on the left, breakdown on the right */
+    .card.budget { order: -1; grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1.5fr; align-items: center; }
+    .card.budget .card-head { grid-column: 1 / -1; }
+    .card.budget .hero { padding: 8px 14px; }
+    .card.budget .hero .big { font-size: 30px; }
+    .card.budget .rows { border-left: 1px solid var(--line); }
+    .hero .why, .rows tr.minor td, .rows tr.total td { font-size: 11px; }
+    .rows tr.total td { font-size: 11.5px; }
+    .meter { font-size: 11px; }
     .card, .flag { box-shadow: none; border: 1px solid var(--line); }
     .card { break-inside: avoid; }
     .card-head { padding: 5px 10px; font-size: 10.5px; }
