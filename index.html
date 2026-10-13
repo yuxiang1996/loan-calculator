@@ -119,6 +119,8 @@
   .switch input:checked + span { background: var(--c); }
   .switch input:checked + span::after { transform: translateX(20px); }
   .switch input:focus-visible + span { outline: 2px solid var(--c); outline-offset: 2px; }
+  .switch-row.disabled > label:first-child { color: var(--muted); cursor: default; }
+  .switch-row.disabled .switch span { opacity: .45; cursor: not-allowed; }
 
   /* results */
   .card { background: var(--card); border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow); }
@@ -252,8 +254,8 @@
   const ABSD = { sc: [0, 0.20, 0.30], spr: [0.05, 0.30, 0.35], fr: [0.60, 0.60, 0.60] };
   const CIT = { sc: 'Singapore Citizen', spr: 'Singapore PR', fr: 'Foreigner' };
   const BSD_BANDS = [[180000, 0.01], [180000, 0.02], [640000, 0.03], [500000, 0.04], [1500000, 0.05], [Infinity, 0.06]];
-  const LEGAL = { buy: { hdb: 2500, private: 3000, ec: 3000 }, sale: { hdb: 2000, private: 2500 } };
-  const VAL_FEE = { hdb: 120, private: 300 };
+  const LEGAL = 2000, LEGAL_HDB = 1000; // private lawyer; HDB conveyancing (no bank loan involved)
+  const VAL_FEE = 0;
 
   // ---------- Helpers ----------
   const num = v => { if (v === '' || v == null) return 0; const x = Number(String(v).replace(/[^0-9.\-]/g, '')); return Number.isFinite(x) ? x : 0; };
@@ -281,8 +283,8 @@
   const defaults = () => ({
     n: 1, married: true,
     b: [blankBuyer(), blankBuyer()],
-    buy: { type: 'private', mode: 'resale', price: '', val: '', lease: '', loan: 'bank', rate: '2.0', stress: '4.0', tenure: '', grants: '', keep: '', legal: null, valFee: null, other: '' },
-    sale: { on: false, type: 'hdb', owner: 'both', price: '', loan: '', cpfP: '', cpfI: '', first: true, repaid: true, bought: '', legal: null, penalty: '', levy: '' },
+    buy: { type: 'private', mode: 'resale', price: '', val: '', lease: '', loan: 'bank', rate: '2.0', stress: '4.0', tenure: '', grants: '', keep: '', legal: null, hdbLegal: false, valFee: null, other: '' },
+    sale: { on: false, type: 'hdb', owner: 'both', price: '', loan: '', cpfP: '', cpfI: '', first: true, repaid: true, bought: '', legal: null, hdbLegal: false, penalty: '', levy: '' },
   });
   let state;
   try {
@@ -316,9 +318,9 @@
   }
   const seg = (path, options, aria) => `<div class="seg-toggle" role="group" aria-label="${aria}">
     ${options.map(([k, t]) => `<button type="button" data-set="${path}" data-val="${k}" class="${String(getPath(path)) === String(k) ? 'on' : ''}">${t}</button>`).join('')}</div>`;
-  const toggle = (path, label, hint) => `<div class="switch-row">
+  const toggle = (path, label, hint, disabled) => `<div class="switch-row${disabled ? ' disabled' : ''}">
       <label for="t-${path}">${label}${hint ? `<small>${hint}</small>` : ''}</label>
-      <label class="switch"><input type="checkbox" id="t-${path}" data-toggle="${path}" ${getPath(path) ? 'checked' : ''}><span></span></label>
+      <label class="switch"><input type="checkbox" id="t-${path}" data-toggle="${path}" ${getPath(path) && !disabled ? 'checked' : ''}${disabled ? ' disabled' : ''}><span></span></label>
     </div>`;
   const COUNT = [['0', '0'], ['1', '1'], ['2', '2 or more']];
 
@@ -367,7 +369,7 @@
       ${s.type === 'ec' ? `<p class="fine" style="margin:0 0 14px">New EC from the developer. For a resale EC, pick Private.</p>` : ''}
       <div class="grid2">
         ${moneyField('buy.price', 'Purchase price', { full: fresh })}
-        ${fresh ? '' : moneyField('buy.val', 'Valuation', { ph: 'Same as price' })}
+        ${fresh ? '' : moneyField('buy.val', 'Valuation', { ph: 'Same as price', hint: 'Fill in to check COV' })}
         ${numField('buy.lease', 'Remaining lease', 'yrs', { ph: '99', full: !fresh, hint: '999 for freehold' })}
       </div>
       <div class="block">
@@ -385,9 +387,10 @@
       </div>
       <div class="block">
         <p class="block-title">Fees</p>
+        ${hdb ? toggle('buy.hdbLegal', 'HDB conveyancing', hdbLoan ? 'HDB acts for you: up to $1,000' : 'Not available with a bank loan. Bank loans need a private lawyer', !hdbLoan) : ''}
         <div class="grid2">
-          ${moneyField('buy.legal', 'Legal fees', { value: s.legal ?? LEGAL.buy[s.type] })}
-          ${fresh ? '' : moneyField('buy.valFee', 'Valuation fee', { value: s.valFee ?? VAL_FEE[hdb ? 'hdb' : 'private'] })}
+          ${moneyField('buy.legal', 'Legal fees', { value: s.legal ?? buyLegalDefault() })}
+          ${fresh ? '' : moneyField('buy.valFee', 'Valuation fee', { value: s.valFee ?? VAL_FEE })}
           ${moneyField('buy.other', 'Other costs', { full: !fresh, hint: 'Renovation, furniture, moving' })}
         </div>
         <p class="fine">${fresh ? 'No buyer\'s agent fee on a new launch or EC.' : 'Buyer\'s agent fee: 1% + GST.'}</p>
@@ -413,8 +416,9 @@
       </div>
       <div class="block">
         <p class="block-title">Fees</p>
+        ${s.type === 'hdb' ? toggle('sale.hdbLegal', 'HDB conveyancing', 'Up to $1,000. Only if no bank loan to redeem') : ''}
         <div class="grid2">
-          ${moneyField('sale.legal', 'Legal fees', { value: s.legal ?? LEGAL.sale[s.type] })}
+          ${moneyField('sale.legal', 'Legal fees', { value: s.legal ?? saleLegalDefault() })}
           ${moneyField('sale.penalty', 'Bank penalty', { hint: 'Lock-in or clawback' })}
           ${s.type === 'hdb' && state.buy.type === 'ec' ? moneyField('sale.levy', 'HDB resale levy', { full: true, hint: 'Second subsidised home (new EC)' }) : ''}
         </div>
@@ -428,6 +432,9 @@
   }
 
   const isNew = () => state.buy.type === 'ec' || (state.buy.type === 'private' && state.buy.mode === 'new');
+  // HDB only acts for buyers on an HDB loan, and for HDB sellers with no bank loan to redeem.
+  const buyLegalDefault = () => state.buy.type === 'hdb' && state.buy.loan === 'hdb' && state.buy.hdbLegal ? LEGAL_HDB : LEGAL;
+  const saleLegalDefault = () => state.sale.type === 'hdb' && state.sale.hdbLegal ? LEGAL_HDB : LEGAL;
   function renderAll() { const c = compute(); renderWho(); renderBuy(c); renderSale(); renderResults(c); }
 
   // ---------- Calculation ----------
@@ -452,7 +459,7 @@
       const grossP = price - loan;
       const cpfBack = clamp(grossP, 0, owed);
       const agent = price * AGENT_SALE * (1 + GST);
-      const legal = sl.legal != null ? num(sl.legal) : LEGAL.sale[sl.type];
+      const legal = sl.legal != null ? num(sl.legal) : saleLegalDefault();
       let ssd = 0, ssdRate = 0, ssdNote = '';
       if (sl.type === 'private' && sl.bought) {
         const bought = parseDate(sl.bought), now = parseDate(isoToday());
@@ -540,8 +547,8 @@
 
     // ----- Fees -----
     const agentBuy = fresh ? 0 : P * AGENT_BUY * (1 + GST);
-    const legalBuy = s.legal != null ? num(s.legal) : LEGAL.buy[s.type];
-    const valFee = fresh ? 0 : (s.valFee != null ? num(s.valFee) : VAL_FEE[hdb ? 'hdb' : 'private']);
+    const legalBuy = s.legal != null ? num(s.legal) : buyLegalDefault();
+    const valFee = fresh ? 0 : (s.valFee != null ? num(s.valFee) : VAL_FEE);
     const otherBuy = num(s.other);
 
     // ----- Funding -----
@@ -776,7 +783,12 @@
   document.addEventListener('change', e => {
     const t = e.target;
     if (t.matches('select[data-path]')) { setPath(t.dataset.path, t.value); save(); renderAll(); }
-    if (t.matches('[data-toggle]')) { setPath(t.dataset.toggle, t.checked); save(); renderAll(); }
+    if (t.matches('[data-toggle]')) {
+      setPath(t.dataset.toggle, t.checked);
+      if (t.dataset.toggle === 'buy.hdbLegal') state.buy.legal = null;
+      if (t.dataset.toggle === 'sale.hdbLegal') state.sale.legal = null;
+      save(); renderAll();
+    }
   });
   document.addEventListener('click', e => {
     const tab = e.target.closest('[data-buyer]');
