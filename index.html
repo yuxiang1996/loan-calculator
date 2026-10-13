@@ -497,7 +497,7 @@
       <div class="grid2">
         ${moneyField('buy.price', 'Purchase price', { full: fresh })}
         ${fresh ? '' : moneyField('buy.val', 'Valuation', { ph: 'Same as price', hint: 'Fill in to check COV' })}
-        ${hdb ? moneyField('buy.grants', 'CPF housing grants', { full: true, hint: 'Family, Enhanced, Proximity — credited to OA' }) : ''}
+        ${hdb ? moneyField('buy.grants', 'CPF housing grants', { full: true, hint: 'Family, Enhanced, Proximity — credited to OA. Second-timers usually get the Proximity grant only (up to $30,000)' }) : ''}
         ${moneyField('buy.cpfUse', 'CPF to use', { full: true, ph: c ? `All ${comma(c.poolStart)}` : 'All available', hint: cpfUseHint(c) })}
         ${moneyField('buy.cashUse', 'Cash to use', { full: true, ph: c ? `All ${comma(c.cashDefault)}` : 'All available', hint: cashUseHint(c) })}
       </div>
@@ -776,6 +776,9 @@
     if (sale && sale.share != null) flags.push(['info', `Using the client's share of cash proceeds (${money(sale.share)}) instead of the whole sale. ${sale.rule50 ? `The 2nd HDB loan rule applies to her share: she keeps ${money(sale.keepCash)}.` : ''}`]);
     if (cpfUseIn != null && cpfUseIn < cpfMin) flags.push(['warn', `With an HDB loan each buyer can keep at most $20,000 in OA, so at least <b>${money(cpfMin)}</b> of CPF must go into the flat.`]);
     if (cpfUseIn != null && cpfUseIn > poolStart) flags.push(['info', `Only ${money(poolStart)} of CPF is available, so that is the most that can be used.`]);
+    const grantsIn = hdb ? num(s.grants) : 0;
+    if (grantsIn > 0) flags.push(['info', 'No resale levy on this purchase — HDB charges it only on a second subsidised home (new BTO, SBF or EC), never on a resale flat. But a grant other than the Proximity grant makes this flat a subsidised flat, so a BTO, SBF or EC bought later would attract the levy.']);
+    if (grantsIn > 30000 && sl.on && sl.type === 'hdb') flags.push(['warn', `${money(grantsIn)} of grants looks high for someone selling an HDB flat. If that flat was subsidised (bought from HDB, or resale with a grant), she is a second-timer and usually qualifies only for the Proximity grant: $30,000 living with parents or children, $20,000 within 4km. A first-timer married to a second-timer can get $40,000 (2–4 room) or $25,000 (5-room+).`]);
     if (levy > 0) flags.push(['info', `HDB resale levy of <b>${money(levy)}</b> applies to this EC as a second subsidised home. It must be paid in cash, not CPF or the loan. If the old flat is sold after collecting the EC keys, HDB deducts it from the sale proceeds.`]);
     if (ec && !s.levyOn && sl.on && sl.type === 'hdb') flags.push(['warn', 'Check the resale levy: if the HDB flat being sold was bought from HDB (BTO, SBF, DBSS) or with a CPF Housing Grant, this EC is a second subsidised home and a levy of $15,000–$55,000 applies. Switch it on in Purchase.']);
     if (fresh) flags.push(['info', 'New launch: the loan is drawn in stages as the building progresses, so instalments start low and reach the full amount at TOP.']);
