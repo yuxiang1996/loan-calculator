@@ -108,6 +108,7 @@
   .block { padding-top: 16px; margin-top: 16px; border-top: 1px solid #eef0ee; }
   .block-title { font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin: 0 0 10px; font-weight: 700; }
   .fine { margin: 10px 0 0; font-size: 12px; color: var(--faint); }
+  .impact { margin: 12px 0 0; padding: 9px 12px; border-radius: 10px; background: var(--soft); color: var(--c); font-size: 13px; font-weight: 600; }
 
   .switch-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 10px 0; }
   .switch-row + .switch-row { border-top: 1px solid #f0f1ef; }
@@ -315,7 +316,7 @@
 
   // ---------- State ----------
   const KEY = 'loan-calculator-v1';
-  const blankBuyer = () => ({ age: '', cit: 'sc', fixed: '', variable: '', debts: '', propLoans: '', oa: '', cash: '', owned: '0', loans: '0' });
+  const blankBuyer = () => ({ age: '', cit: 'sc', fixed: '', variable: '', debts: '', other: false, propLoans: '', oa: '', cash: '', owned: '0', loans: '0' });
   const defaults = () => ({
     n: 1, married: true,
     b: [blankBuyer(), blankBuyer()],
@@ -327,6 +328,7 @@
     const saved = JSON.parse(localStorage.getItem(KEY));
     const d = defaults();
     state = saved ? { ...d, ...saved, buy: { ...d.buy, ...saved.buy }, sale: { ...d.sale, ...saved.sale }, b: [0, 1].map(i => ({ ...blankBuyer(), ...(saved.b || [])[i] })) } : d;
+    state.b.forEach(b => { if (b.other === false && (num(b.owned) > 0 || num(b.loans) > 0 || num(b.propLoans) > 0)) b.other = true; });
     // older saves kept one combined CPF figure for the sale
     if (!Array.isArray(state.sale.cpf)) state.sale.cpf = [{ p: '', i: '' }, { p: '', i: '' }];
     if (saved && saved.sale && ('cpfP' in saved.sale)) { state.sale.cpf[0] = { p: saved.sale.cpfP || '', i: saved.sale.cpfI || '' }; delete state.sale.cpfP; delete state.sale.cpfI; }
@@ -361,7 +363,6 @@
       <label for="t-${path}">${label}${hint ? `<small>${hint}</small>` : ''}</label>
       <label class="switch"><input type="checkbox" id="t-${path}" data-toggle="${path}" ${getPath(path) && !disabled ? 'checked' : ''}${disabled ? ' disabled' : ''}><span></span></label>
     </div>`;
-  const COUNT = [['0', '0'], ['1', '1'], ['2', '2 or more']];
 
   // ---------- Panels ----------
   let activeBuyer = 0;
@@ -374,7 +375,7 @@
   }
   const wide = html => html.replace('seg-toggle', 'seg-toggle wide');
 
-  function renderWho() {
+  function renderWho(c) {
     const el = document.getElementById('panel-who');
     if (activeBuyer >= state.n) activeBuyer = 0;
     const i = activeBuyer;
@@ -391,13 +392,33 @@
         ${selectField(`b.${i}.cit`, 'Citizenship', [['sc', 'Citizen (SC)'], ['spr', 'PR'], ['fr', 'Foreigner']])}
         ${moneyField(`b.${i}.fixed`, 'Fixed income / month', { hint: 'Gross, before CPF' })}
         ${moneyField(`b.${i}.variable`, 'Variable / month', { hint: 'Bonus, commission, rent. 70% counted' })}
-        ${moneyField(`b.${i}.debts`, 'Other debts / month', { hint: 'Car, personal, cards' })}
-        ${moneyField(`b.${i}.propLoans`, 'Home loans / month', { hint: 'On properties being kept' })}
         ${moneyField(`b.${i}.oa`, 'CPF OA balance')}
         ${moneyField(`b.${i}.cash`, 'Cash savings', { hint: 'For the next home' })}
-        ${selectField(`b.${i}.owned`, 'Properties owned', COUNT, { hint: 'Incl. HDB, overseas' })}
-        ${selectField(`b.${i}.loans`, 'Home loans unpaid', COUNT, { hint: 'Excl. the home being sold' })}
-      </div>`;
+        ${moneyField(`b.${i}.debts`, 'Other debts / month', { full: true, hint: 'Car, personal, study loans, card minimums. Not home loans' })}
+      </div>
+      ${otherProperty(i, c)}`;
+  }
+
+  // Other homes the buyer keeps. Feeds ABSD (properties owned) and LTV (housing loans outstanding).
+  function otherProperty(i, c) {
+    const b = state.b[i];
+    const head = toggle(`b.${i}.other`, 'Owns other property', "Not counting the home being sold — that's in section 3. Include HDB and overseas");
+    if (!b.other) return `<div class="block">${head}</div>`;
+    const owned = Math.max(1, num(b.owned));
+    const loanOpts = [['0', 'None'], ['1', 'On 1'], ...(owned >= 2 ? [['2', 'On 2 or more']] : [])];
+    let impact = '';
+    if (c) {
+      const absd = c.absdRate ? `ABSD ${pct(c.absdRate, 0)} on this purchase${c.absdRefund ? ' (refundable if a home is sold within 6 months)' : ''}` : 'No ABSD on this purchase';
+      const ltv = c.hdbLoan ? (c.loansOut ? 'HDB loan not available while a home loan is outstanding' : 'HDB loan unaffected')
+        : `LTV ${pct(c.ltv, 0)}, ${pct(c.minCashPct, 0)} cash downpayment`;
+      impact = `<p class="impact">${absd} · ${ltv}</p>`;
+    }
+    return `<div class="block">${head}
+      <div class="grid2" style="margin-top:6px">
+        ${selectField(`b.${i}.owned`, 'How many?', [['1', '1'], ['2', '2 or more']])}
+        ${selectField(`b.${i}.loans`, 'Still paying a loan?', loanOpts)}
+        ${num(b.loans) > 0 ? moneyField(`b.${i}.propLoans`, 'Instalment on those loans / month', { full: true, hint: 'Counts towards TDSR and MSR' }) : ''}
+      </div>${impact}</div>`;
   }
 
   function renderLoan(c) {
@@ -491,11 +512,13 @@
   // HDB only acts for buyers on an HDB loan, and for HDB sellers with no bank loan to redeem.
   const buyLegalDefault = () => state.buy.type === 'hdb' && state.buy.loan === 'hdb' && state.buy.hdbLegal ? LEGAL_HDB : LEGAL;
   const saleLegalDefault = () => state.sale.type === 'hdb' && state.sale.hdbLegal ? LEGAL_HDB : LEGAL;
-  function renderAll() { const c = compute(); renderWho(); renderLoan(c); renderSale(); renderBuy(c); renderResults(c); }
+  function renderAll() { const c = compute(); renderWho(c); renderLoan(c); renderSale(); renderBuy(c); renderResults(c); }
 
   // ---------- Calculation ----------
   function compute() {
-    const B = state.b.slice(0, state.n), s = state.buy, sl = state.sale;
+    const B = state.b.slice(0, state.n).map(b => b.other
+      ? { ...b, owned: String(Math.max(1, num(b.owned))), loans: String(Math.min(num(b.loans), Math.max(1, num(b.owned)))), propLoans: num(b.loans) > 0 ? b.propLoans : '' }
+      : { ...b, owned: '0', loans: '0', propLoans: '' }), s = state.buy, sl = state.sale;
     const flags = [];
     const hdb = s.type === 'hdb', ec = s.type === 'ec', hdbLoan = hdb && s.loan === 'hdb', fresh = isNew();
     const ages = B.map(b => num(b.age));
@@ -1057,9 +1080,15 @@
   });
   document.addEventListener('change', e => {
     const t = e.target;
-    if (t.matches('select[data-path]')) { setPath(t.dataset.path, t.value); save(); renderAll(); }
+    if (t.matches('select[data-path]')) {
+      setPath(t.dataset.path, t.value);
+      state.b.forEach(b => { if (num(b.loans) > num(b.owned)) b.loans = b.owned; });
+      save(); renderAll();
+    }
     if (t.matches('[data-toggle]')) {
       setPath(t.dataset.toggle, t.checked);
+      const m = t.dataset.toggle.match(/^b\.(\d)\.other$/);
+      if (m && t.checked && num(state.b[m[1]].owned) < 1) state.b[m[1]].owned = '1';
       if (t.dataset.toggle === 'buy.hdbLegal') state.buy.legal = null;
       if (t.dataset.toggle === 'sale.hdbLegal') state.sale.legal = null;
       save(); renderAll();
@@ -1067,7 +1096,7 @@
   });
   document.addEventListener('click', e => {
     const tab = e.target.closest('[data-buyer]');
-    if (tab) { activeBuyer = Number(tab.dataset.buyer); renderWho(); return; }
+    if (tab) { activeBuyer = Number(tab.dataset.buyer); renderWho(compute()); return; }
     const b = e.target.closest('[data-set]');
     if (!b) return;
     const p = b.dataset.set;
