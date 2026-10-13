@@ -293,6 +293,9 @@
   const BSD_BANDS = [[180000, 0.01], [180000, 0.02], [640000, 0.03], [500000, 0.04], [1500000, 0.05], [Infinity, 0.06]];
   const LEGAL = 2000, LEGAL_HDB = 1000; // private lawyer; HDB conveyancing (no bank loan involved)
   const VAL_FEE = 0;
+  // HDB resale levy on a second subsidised home, by the first subsidised flat sold (on or after 3 Mar 2006).
+  const LEVY = { '2': 15000, '3': 30000, '4': 40000, '5': 45000, '3gen': 45000, ex: 50000, ec: 55000 };
+  const LEVY_TYPES = [['2', '2-room / 2-room Flexi'], ['3', '3-room'], ['4', '4-room'], ['5', '5-room'], ['3gen', '3Gen'], ['ex', 'Executive'], ['ec', 'Executive condo (EC)']];
 
   // ---------- Helpers ----------
   const num = v => { if (v === '' || v == null) return 0; const x = Number(String(v).replace(/[^0-9.\-]/g, '')); return Number.isFinite(x) ? x : 0; };
@@ -320,7 +323,7 @@
   const defaults = () => ({
     n: 1, married: true,
     b: [blankBuyer(), blankBuyer()],
-    buy: { type: 'private', mode: 'resale', price: '', val: '', lease: '', loan: 'bank', rate: '2.0', stress: '4.0', tenure: '', grants: '', keep: '', legal: null, hdbLegal: false, valFee: null, other: '' },
+    buy: { type: 'private', mode: 'resale', price: '', val: '', lease: '', loan: 'bank', rate: '2.0', stress: '4.0', tenure: '', grants: '', keep: '', legal: null, hdbLegal: false, valFee: null, other: '', levyOn: false, levyType: '4', levySingle: false, levy: null },
     sale: { on: false, type: 'hdb', owner: 'both', price: '', loan: '', cpf: [{ p: '', i: '' }, { p: '', i: '' }], first: true, repaid: true, hdb2nd: true, bought: '', legal: null, hdbLegal: false, penalty: '', levy: '' },
   });
   let state;
@@ -468,7 +471,6 @@
         <div class="grid2">
           ${moneyField('sale.legal', 'Legal fees', { value: s.legal ?? saleLegalDefault() })}
           ${moneyField('sale.penalty', 'Bank penalty', { hint: 'Lock-in or clawback' })}
-          ${s.type === 'hdb' && state.buy.type === 'ec' ? moneyField('sale.levy', 'HDB resale levy', { full: true, hint: 'Second subsidised home (new EC)' }) : ''}
         </div>
         <p class="fine">Seller's agent fee: 2% + GST.</p>
       </div>
@@ -504,7 +506,23 @@
           ${moneyField('buy.other', 'Other costs', { full: !fresh, hint: 'Renovation, furniture, moving' })}
         </div>
         <p class="fine">${fresh ? 'No buyer\'s agent fee on a new launch or EC.' : 'Buyer\'s agent fee: 1% + GST.'}</p>
-      </div>`;
+      </div>
+      ${levyBlock(c)}`;
+  }
+
+  function levyBlock(c) {
+    const s = state.buy;
+    if (s.type !== 'ec') return `<p class="fine">No HDB resale levy: it only applies to a second subsidised home (a new BTO, SBF or EC), not to ${s.type === 'hdb' ? 'resale flats' : 'private property'}.</p>`;
+    const head = toggle('buy.levyOn', 'Bought a subsidised flat before', 'From HDB (BTO, SBF, DBSS), a new EC, or a resale flat with a CPF Housing Grant. This EC is then a second subsidised home');
+    if (!s.levyOn) return `<div class="block"><p class="block-title">HDB resale levy</p>${head}</div>`;
+    return `<div class="block"><p class="block-title">HDB resale levy</p>${head}
+      <div class="grid2" style="margin-top:6px">
+        ${selectField('buy.levyType', 'First subsidised flat', LEVY_TYPES)}
+        ${moneyField('buy.levy', 'Levy', { value: s.levy ?? (c ? c.levyAuto : LEVY[s.levyType]), hint: 'Cash only' })}
+      </div>
+      ${toggle('buy.levySingle', 'Bought it as a single', 'Singles who got a CPF Housing Grant pay half')}
+      <p class="fine">Fixed amounts for flats sold on or after 3 Mar 2006. If it was sold before then, the levy is 10–25% of that sale price, so type the amount in.</p>
+    </div>`;
   }
 
   const isNew = () => state.buy.type === 'ec' || (state.buy.type === 'private' && state.buy.mode === 'new');
@@ -554,15 +572,15 @@
           flags.push(['warn', `Seller's Stamp Duty of ${money(ssd)} applies. Selling after <b>${fmtDate(addYears(bought, tiers.length))}</b> avoids it.`]);
         }
       }
-      const penalty = num(sl.penalty), levy = sl.type === 'hdb' && ec ? num(sl.levy) : 0;
-      const cash = grossP - cpfBack - agent - legal - ssd - penalty - levy;
+      const penalty = num(sl.penalty);
+      const cash = grossP - cpfBack - agent - legal - ssd - penalty;
       // 2nd HDB loan: HDB counts cash proceeds before agent and legal fees (deposit included);
       // the seller keeps the higher of $25,000 or half, the rest must cut the new loan.
-      const ruleCash = Math.max(0, grossP - cpfBack - levy);
+      const ruleCash = Math.max(0, grossP - cpfBack);
       const rule50 = hdbLoan && sl.hdb2nd;
       const keepCash = ruleCash <= 25000 ? ruleCash : Math.max(25000, ruleCash / 2);
       const mustUse = rule50 ? Math.min(Math.max(0, cash), ruleCash - keepCash) : 0;
-      sale = { price, loan, owed, owedBy, cpfBack, backBy, agent, legal, ssd, ssdRate, ssdNote, penalty, levy, cash, shortCPF: owed - cpfBack, rule50, ruleCash, keepCash, mustUse };
+      sale = { price, loan, owed, owedBy, cpfBack, backBy, agent, legal, ssd, ssdRate, ssdNote, penalty, cash, shortCPF: owed - cpfBack, rule50, ruleCash, keepCash, mustUse };
       if (price && grossP < 0) flags.push(['warn', `The selling price doesn't cover the outstanding loan. You will need ${money(-grossP)} in cash to redeem it.`]);
       if (price && sale.shortCPF > 0.5 && grossP >= 0) flags.push(['info', `Sale proceeds cover only ${money(cpfBack)} of the ${money(owed)} CPF to refund. For a sale at market value, CPF does not ask you to top up the shortfall.`]);
     }
@@ -634,6 +652,9 @@
     const cashAvail = savings + saleCash;
     const legalBuy = s.legal != null ? num(s.legal) : buyLegalDefault();
     const otherBuy = num(s.other);
+    // Resale levy: only a new EC in this calculator is a second subsidised home. Cash only.
+    const levyAuto = LEVY[s.levyType] * (s.levySingle ? 0.5 : 1);
+    const levy = ec && s.levyOn ? (s.levy != null ? num(s.levy) : levyAuto) : 0;
     const valFeeIn = fresh ? 0 : (s.valFee != null ? num(s.valFee) : VAL_FEE);
 
     // Funding for a given price and valuation.
@@ -668,10 +689,10 @@
       D = P - loan;
       const mortgageDuty = loan > 0 ? Math.min(500, Math.floor(loan * 0.004)) : 0;
       const cashDown = D - cpfDown;
-      const cashFees = (cpfPayable - cpfFees) + agentBuy + valFee + mortgageDuty + otherBuy;
+      const cashFees = (cpfPayable - cpfFees) + agentBuy + valFee + mortgageDuty + otherBuy + levy;
       const cashNeeded = cashDown + cashFees;
-      const fees = BSD + ABSDamt + legalBuy + agentBuy + valFee + mortgageDuty + otherBuy;
-      return { P, V, base, cov, ltvLoan, maxLoan, BSD, ABSDamt, agentBuy, valFee, mortgageDuty, loan, D, minCash, cpfDown, cpfFees,
+      const fees = BSD + ABSDamt + legalBuy + agentBuy + valFee + mortgageDuty + otherBuy + levy;
+      return { P, V, base, cov, ltvLoan, maxLoan, BSD, ABSDamt, agentBuy, valFee, mortgageDuty, levy, loan, D, minCash, cpfDown, cpfFees,
         cpfUsed: cpfDown + cpfFees, cashDown, cashFees, cashNeeded, poolLeft: pool, hdbCut, cashCut, fees, totalCost: P + fees,
         binding: ltvLoan <= incomeLoan ? 'LTV' : incomeRule };
     }
@@ -729,6 +750,8 @@
     }
     if (cpfUseIn != null && cpfUseIn < cpfMin) flags.push(['warn', `With an HDB loan each buyer can keep at most $20,000 in OA, so at least <b>${money(cpfMin)}</b> of CPF must go into the flat.`]);
     if (cpfUseIn != null && cpfUseIn > poolStart) flags.push(['info', `Only ${money(poolStart)} of CPF is available, so that is the most that can be used.`]);
+    if (levy > 0) flags.push(['info', `HDB resale levy of <b>${money(levy)}</b> applies to this EC as a second subsidised home. It must be paid in cash, not CPF or the loan. If the old flat is sold after collecting the EC keys, HDB deducts it from the sale proceeds.`]);
+    if (ec && !s.levyOn && sl.on && sl.type === 'hdb') flags.push(['warn', 'Check the resale levy: if the HDB flat being sold was bought from HDB (BTO, SBF, DBSS) or with a CPF Housing Grant, this EC is a second subsidised home and a levy of $15,000–$55,000 applies. Switch it on in Purchase.']);
     if (fresh) flags.push(['info', 'New launch: the loan is drawn in stages as the building progresses, so instalments start low and reach the full amount at TOP.']);
     if (lowTier && agesKnown) {
       const keepTo = hdb ? 25 : 30;
@@ -752,7 +775,7 @@
 
     return { B, hdb, ec, hdbLoan, fresh, iwaa, youngest, agesKnown, income, grossTotal, tenure, autoTenure, tenureHint, cap75, capMax, lowTier,
       ltv, minCashPct, stress, rate, incomeLoan, incomeLoanR, incomeRule, loansOut, leaseFactor, absdRate, absdNote, absdRefund,
-      oaBy, oaTotal, grants, keep, poolStart, cpfMin, cpfUseIn, cpfLimit, savings, saleCash, cashAvail, legalBuy, otherBuy, owners,
+      levy, levyAuto, oaBy, oaTotal, grants, keep, poolStart, cpfMin, cpfUseIn, cpfLimit, savings, saleCash, cashAvail, legalBuy, otherBuy, owners,
       at, budget, topUp, shortfall, deposit, depositLbl, dutyUpfront, upfront, inst, instStress, tdsrUsed, msrUsed, otherDebt, otherProp, sale, flags };
   }
 
@@ -811,7 +834,6 @@
           ${row('Legal fees', money(-s.legal), '', 'Cash only — CPF cannot pay sale fees')}
           ${s.ssd ? row("Seller's Stamp Duty", money(-s.ssd), 'hl', s.ssdNote) : ''}
           ${s.penalty ? row('Bank penalty / clawback', money(-s.penalty)) : ''}
-          ${s.levy ? row('HDB resale levy', money(-s.levy)) : ''}
           ${row('Cash proceeds', money(s.cash), 'total')}
           ${s.rule50 && s.mustUse > 0 ? row('of which must go into the flat', money(s.mustUse), 'minor', `2nd HDB loan rule. Client keeps ${money(s.keepCash)}`) : ''}
         </table>
@@ -843,6 +865,7 @@
           ${f.valFee ? row('Valuation fee', money(-f.valFee)) : ''}
           ${row('Mortgage stamp duty', money(-f.mortgageDuty), '', '0.4% of loan, max $500')}
           ${c.otherBuy ? row('Other costs', money(-c.otherBuy)) : ''}
+          ${f.levy ? row('HDB resale levy', money(-f.levy), 'hl', 'Cash only') : ''}
           ${row('Max purchase price', money(b.maxPrice), 'total')}
           ${b.cpfIdle > 1000 ? row('CPF not usable', money(b.cpfIdle), 'minor', 'Cash rule binds first') : ''}
         </table></div>`;
@@ -871,6 +894,7 @@
           ${at.valFee ? row('Valuation fee', money(at.valFee), '', 'Cash only') : ''}
           ${row('Mortgage stamp duty', money(at.mortgageDuty), '', '0.4% of loan, max $500 · CPF or cash')}
           ${c.otherBuy ? row('Other costs', money(c.otherBuy), '', 'Cash only') : ''}
+          ${at.levy ? row('HDB resale levy', money(at.levy), 'hl', 'Second subsidised home · cash only') : ''}
           ${row('Total fees', money(at.fees), 'total')}
           ${row('paid by CPF', money(at.cpfFees), 'minor')}
           ${row('paid by cash', money(at.cashFees), 'minor')}
@@ -945,6 +969,7 @@
         ${f.valFee ? r('Valuation fee', money(-f.valFee)) : ''}
         ${r('Mortgage stamp duty', money(-f.mortgageDuty))}
         ${c.otherBuy ? r('Other costs', money(-c.otherBuy)) : ''}
+        ${f.levy ? r('HDB resale levy', money(-f.levy), 'hl', 'Cash only') : ''}
         ${r('Max purchase price', money(b.maxPrice), 'tot big')}
       </table>`);
     }
@@ -972,7 +997,6 @@
         ${r('Legal fees', money(-s.legal))}
         ${s.ssd ? r("Seller's Stamp Duty", money(-s.ssd), 'hl', s.ssdNote) : ''}
         ${s.penalty ? r('Bank penalty / clawback', money(-s.penalty)) : ''}
-        ${s.levy ? r('HDB resale levy', money(-s.levy)) : ''}
         ${r('Cash proceeds', money(s.cash), 'tot big')}
         ${s.rule50 && s.mustUse > 0 ? r('of which must go into the next flat', money(s.mustUse), 'm', `2nd HDB loan rule; client keeps ${money(s.keepCash)}`) : ''}
         ${sub('CPF OA for the next home')}
@@ -1000,6 +1024,7 @@
         ${at.valFee ? r('Valuation fee', money(at.valFee), '', 'Cash only') : ''}
         ${r('Mortgage stamp duty', money(at.mortgageDuty), '', 'CPF or cash')}
         ${c.otherBuy ? r('Other costs', money(c.otherBuy), '', 'Cash only') : ''}
+        ${at.levy ? r('HDB resale levy', money(at.levy), 'hl', 'Second subsidised home · cash only') : ''}
         ${r('Total fees', money(at.fees), 'tot')}
       </table><table class="rp-t">
         ${sub('How it is paid')}
@@ -1064,7 +1089,7 @@
     let v = t.value;
     if ('money' in t.dataset) v = v.replace(/[^0-9]/g, '');
     else if (t.type !== 'date') v = v.replace(/[^0-9.]/g, '');
-    if (p === 'buy.legal' || p === 'buy.valFee' || p === 'sale.legal') v = v === '' ? null : v;
+    if (p === 'buy.legal' || p === 'buy.valFee' || p === 'sale.legal' || p === 'buy.levy') v = v === '' ? null : v;
     setPath(p, v);
     update(false);
     if (p.startsWith('b.')) document.querySelectorAll('[data-buyer]').forEach(t => { t.querySelector('em').textContent = buyerSummary(state.b[Number(t.dataset.buyer)]); });
@@ -1073,7 +1098,7 @@
     const t = e.target;
     if (t.dataset && 'money' in t.dataset) {
       const v = getPath(t.dataset.path);
-      if (v == null && (t.dataset.path === 'buy.legal' || t.dataset.path === 'sale.legal' || t.dataset.path === 'buy.valFee')) return renderAll();
+      if (v == null && ['buy.legal', 'sale.legal', 'buy.valFee', 'buy.levy'].includes(t.dataset.path)) return renderAll();
       t.value = comma(v);
     }
     if (t.dataset && t.dataset.path === 'buy.tenure') { const c = compute(); if (has(state.buy.tenure) && Number(state.buy.tenure) !== c.tenure) { state.buy.tenure = String(c.tenure); save(); } renderLoan(c); }
@@ -1082,6 +1107,7 @@
     const t = e.target;
     if (t.matches('select[data-path]')) {
       setPath(t.dataset.path, t.value);
+      if (t.dataset.path === 'buy.levyType') state.buy.levy = null;
       state.b.forEach(b => { if (num(b.loans) > num(b.owned)) b.loans = b.owned; });
       save(); renderAll();
     }
@@ -1090,6 +1116,7 @@
       const m = t.dataset.toggle.match(/^b\.(\d)\.other$/);
       if (m && t.checked && num(state.b[m[1]].owned) < 1) state.b[m[1]].owned = '1';
       if (t.dataset.toggle === 'buy.hdbLegal') state.buy.legal = null;
+      if (t.dataset.toggle === 'buy.levySingle' || t.dataset.toggle === 'buy.levyOn') state.buy.levy = null;
       if (t.dataset.toggle === 'sale.hdbLegal') state.sale.legal = null;
       save(); renderAll();
     }
