@@ -42,6 +42,8 @@
     min-height: 40px; padding: 8px 16px; border-radius: 999px; font: inherit; font-size: 14px; font-weight: 500; cursor: pointer;
   }
   button.ghost:hover { border-color: #b9c0bd; }
+  button.primary { background: var(--ink); color: #fff; border-color: var(--ink); font-weight: 600; }
+  button.primary:hover { background: #33403c; border-color: #33403c; }
 
   /* phone: one column; iPad and up: form + sticky results */
   .layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-items: start; }
@@ -157,8 +159,18 @@
   .bar i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--who); border-radius: 999px; transition: width .2s; }
   .bar i.over { background: var(--gap); }
 
-  .more { border-top: 1px solid #f1f2f0; }
-  .more > summary { list-style: none; cursor: pointer; padding: 11px 16px; font-size: 13px; font-weight: 600; color: var(--who); display: flex; align-items: center; gap: 6px; user-select: none; }
+  .more { padding: 4px 14px 14px; }
+  .more[open] { padding-bottom: 0; }
+  .more > summary {
+    list-style: none; cursor: pointer; user-select: none;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    min-height: 44px; padding: 10px 14px; border-radius: 12px;
+    background: var(--who-soft); border: 1.5px solid #c9d5e0; color: var(--who);
+    font-size: 14px; font-weight: 700; transition: background .12s, border-color .12s;
+  }
+  .more > summary:hover { background: #dce5ee; border-color: #a9bccd; }
+  .more > summary:focus-visible { outline: 2px solid var(--who); outline-offset: 2px; }
+  .more[open] > summary { background: #fff; margin-bottom: 10px; }
   .more > summary::-webkit-details-marker { display: none; }
   .more > summary::after { content: ""; width: 7px; height: 7px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(45deg) translateY(-2px); margin-left: 2px; transition: transform .15s; }
   .more[open] > summary::after { transform: rotate(-135deg) translateY(-1px); }
@@ -167,8 +179,8 @@
   .more > .rows { border-top: 1px solid #f1f2f0; }
   .meter-cell { padding: 10px 16px 12px !important; text-align: left !important; font-weight: 400 !important; }
   .meter-cell .meter + .meter { margin-top: 8px; }
-  .more.notes { border: 0; }
-  .more.notes > summary { padding: 6px 2px; }
+  .more.notes { padding: 0; }
+  .more.notes > summary { background: var(--card); box-shadow: var(--shadow); }
   .more.notes .flags { margin-top: 4px; }
   .flags { display: grid; gap: 8px; }
   .flag { font-size: 13px; line-height: 1.45; background: var(--card); border-radius: 12px; padding: 10px 14px 10px 16px; box-shadow: var(--shadow); position: relative; }
@@ -255,7 +267,7 @@
       <p class="tagline">How much you can borrow, and the cash and CPF you need. Singapore rules as at Oct 2026.</p>
     </div>
     <div class="actions">
-      <button class="ghost" id="print">Print / PDF</button>
+      <button class="ghost primary" id="print">Print / PDF</button>
       <button class="ghost" id="reset">Clear all</button>
     </div>
   </header>
