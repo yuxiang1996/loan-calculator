@@ -145,8 +145,8 @@
   .rows tr.minor td:last-child { font-weight: 500; }
   .rows tr.total td { background: #f8f8f6; font-weight: 700; border-bottom: 0; font-size: 15px; }
   .rows tr.hl td { background: #fcf6e9; }
-  .card.prep .rows tr.good td { background: #e7f4f0; color: var(--sale); }
-  .card.prep .rows tr.total.hl td { color: #8a5a00; }
+  .rows tr.good td { background: #e7f4f0; color: var(--sale); }
+  .rows tr.total.hl td { color: #8a5a00; }
   .meters { padding: 10px 16px 14px; display: grid; gap: 10px; }
   .meter { font-size: 13px; }
   .meter .lbl { display: flex; justify-content: space-between; color: var(--muted); margin-bottom: 4px; }
@@ -196,6 +196,9 @@
     .card.budget .hero { padding: 8px 14px; }
     .card.budget .hero .big { font-size: 30px; }
     .card.budget .rows { border-left: 1px solid var(--line); }
+    .card.cost { grid-column: 1 / -1; }
+    .card.cost .split { display: grid; grid-template-columns: 1fr 1fr; align-items: start; }
+    .card.cost .split > table + table { border-left: 1px solid var(--line); }
     .hero .why, .rows tr.minor td, .rows tr.total td { font-size: 11px; }
     .rows tr.total td { font-size: 11.5px; }
     .meter { font-size: 11px; }
@@ -796,24 +799,17 @@
         </table></div>`;
     }
 
-    // 4. At the entered price
+    // 4. At the entered price: what it costs, how it is paid, and whether the cash covers it
     if (at) {
       const need = c.shortfall > 0.5;
-      html += `<div class="card prep"><div class="card-head"><span>At ${money(at.P)}</span><em>${need ? 'Cash short' : 'Covered'}</em></div>
-        <table class="rows">
-          ${row(c.hdbLoan ? 'HDB loan' : 'Bank loan', money(at.loan))}
-          ${row('CPF OA used', money(at.cpfUsed), '', 'Downpayment, stamp duties, legal')}
-          ${row('Cash needed', money(at.cashNeeded), '', 'Min. cash plus fees CPF can\'t pay')}
-          ${row('Cash available', money(c.cashAvail), 'minor', [c.sale ? `Sale ${money(c.saleCash)}` : '', `savings ${money(c.savings)}`].filter(Boolean).join(' + '))}
-          ${need ? row('Cash short by', money(c.shortfall), 'total hl') : row('Cash left over', money(-c.shortfall), 'total good')}
-          ${c.absdRefund && at.ABSDamt ? row('ABSD refunded later', money(at.ABSDamt), 'minor', 'Once the first home is sold within 6 months') : ''}
-          ${row('CPF left in OA', money(at.poolLeft + c.keep), 'minor', c.keep ? `Incl. ${money(c.keep)} kept aside` : '')}
-          ${row('Cash due before completion', money(c.upfront), 'hl', `${c.depositLbl}${c.dutyUpfront ? ' + stamp duty in 14 days' : ''}${c.fresh || !c.dutyUpfront ? '' : '. CPF refunds the duty at completion'}`)}
-        </table></div>
-        <div class="card cost"><div class="card-head"><span>Purchase costs</span><em>${money(at.P)}</em></div>
-        <table class="rows">
-          ${row('Downpayment', money(at.D), '', `${pct(at.D / at.P, 1)} of price`)}
-          ${at.minCash > 0 ? row(at.cov ? 'of which cash only' : `of which min. cash (${pct(c.minCashPct, 0)})`, money(at.minCash), 'minor', at.cov ? `Incl. ${money(at.cov)} above valuation` : '') : ''}
+      const cuts = [at.hdbCut ? `CPF in first −${money(at.hdbCut)}` : '', at.cashCut ? `50% sale cash −${money(at.cashCut)}` : ''].filter(Boolean).join(' · ');
+      const cashFees = at.cashNeeded - at.cashDown;
+      const cashNote = [at.cashDown > 0.5 ? `Downpayment ${money(at.cashDown)}${at.cov ? ` (incl. ${money(at.cov)} COV)` : at.minCash > 0 ? ` (min. ${pct(c.minCashPct, 0)} cash)` : ''}` : '',
+        cashFees > 0.5 ? `fees ${money(cashFees)}` : ''].filter(Boolean).join(' + ');
+      html += `<div class="card cost"><div class="card-head"><span>Purchase costs</span><em>${need ? 'Cash short' : 'Covered'}</em></div>
+        <div class="split"><table class="rows">
+          ${row('Purchase price', money(at.P), '', at.cov ? `Valuation ${money(at.V)}` : '')}
+          <tr class="sub"><td colspan="2">Add stamp duty and fees</td></tr>
           ${row("Buyer's Stamp Duty", money(at.BSD))}
           ${row("Additional Buyer's Stamp Duty", money(at.ABSDamt), at.ABSDamt ? 'hl' : '', at.ABSDamt ? `${pct(c.absdRate, 0)}${c.absdRefund ? ' · refundable' : ''}` : c.absdNote || 'Not payable')}
           ${row('Legal fees', money(c.legalBuy))}
@@ -821,8 +817,20 @@
           ${at.valFee ? row('Valuation fee', money(at.valFee)) : ''}
           ${row('Mortgage stamp duty', money(at.mortgageDuty), '', '0.4% of loan, max $500')}
           ${c.otherBuy ? row('Other costs', money(c.otherBuy)) : ''}
-          ${row('Total excluding loan', money(at.totalCost - at.loan), 'total')}
-        </table></div>`;
+          ${row('Total cost', money(at.totalCost), 'total')}
+          ${row(`Less ${c.hdbLoan ? 'HDB' : 'bank'} loan`, money(-at.loan), '', cuts || `Downpayment ${money(at.D)} (${pct(at.D / at.P, 1)} of price)`)}
+          ${row('Amount needed', money(at.totalCost - at.loan), 'total')}
+        </table><table class="rows">
+          <tr class="sub"><td colspan="2">Paid with</td></tr>
+          ${row('CPF OA', money(at.cpfUsed), '', c.sale && c.sale.cpfBack ? `Incl. ${money(c.sale.cpfBack)} sale refund` : 'Downpayment, stamp duty, legal')}
+          ${row('Cash', money(at.cashNeeded), '', cashNote)}
+          <tr class="sub"><td colspan="2">Cash check</td></tr>
+          ${row('Cash available', money(c.cashAvail), '', [c.sale ? `Sale ${money(c.saleCash)}` : '', `savings ${money(c.savings)}`].filter(Boolean).join(' + '))}
+          ${need ? row('Cash short by', money(c.shortfall), 'total hl') : row('Cash left over', money(-c.shortfall), 'total good')}
+          ${c.absdRefund && at.ABSDamt ? row('ABSD refunded later', money(at.ABSDamt), 'minor', 'Once the first home is sold within 6 months') : ''}
+          ${row('CPF left in OA', money(at.poolLeft + c.keep), 'minor', c.keep ? `Incl. ${money(c.keep)} kept aside` : '')}
+          ${row('Cash due before completion', money(c.upfront), 'hl', `${c.depositLbl}${c.dutyUpfront ? ' + stamp duty in 14 days' : ''}${c.fresh || !c.dutyUpfront ? '' : '. CPF refunds the duty at completion'}`)}
+        </table></div></div>`;
     }
     el.innerHTML = html + flagsHtml(c);
     updateDock(c); buildReport(c);
