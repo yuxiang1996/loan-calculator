@@ -359,7 +359,7 @@
   const KEY = 'loan-calculator-v1';
   const blankBuyer = () => ({ age: '', cit: 'sc', fixed: '', variable: '', debts: '', other: false, propLoans: '', oa: '', cash: '', owned: '0', loans: '0' });
   const defaults = () => ({
-    n: 1, married: true,
+    n: 1, married: true, withKids: false,
     b: [blankBuyer(), blankBuyer()],
     buy: { type: 'private', mode: 'resale', price: '', val: '', lease: '', loan: 'bank', rate: '2.0', stress: '4.0', tenure: '', grants: '', keep: '', legal: null, hdbLegal: false, valFee: null, other: '', levyOn: false, levyType: '4', levySingle: false, levy: null, grantPHG: false, cashUse: '' },
     sale: { on: false, type: 'hdb', owner: 'both', price: '', loan: '', cpf: [{ p: '', i: '' }, { p: '', i: '' }], first: true, repaid: true, hdb2nd: true, contra: true, bought: '', legal: null, hdbLegal: false, penalty: '', share: '', coOwner: false, coP: '', coI: '' },
@@ -425,7 +425,7 @@
       </div>` : '';
     el.innerHTML = `
       <div class="panel-head">${title(1, 'Buyers')}${seg('n', [[1, '1 buyer'], [2, '2 buyers']], 'Number of buyers')}</div>
-      ${state.n > 1 ? toggle('married', 'Married couple', 'Affects ABSD remission and refund') : ''}
+      ${state.n > 1 ? toggle('married', 'Married couple', 'Affects ABSD remission and refund') : toggle('withKids', 'Buying with children under her care', 'Divorced or widowed parent with custody, care and control. HDB treats this as a family: $16,000 loan ceiling, no age-35 rule, new EC allowed')}
       ${state.n > 1 ? '<div style="height:10px"></div>' : ''}
       ${tabs}
       <div class="grid2">
@@ -825,9 +825,15 @@
     const msrUsed = income ? (instStress + otherProp) / income : 0;
 
     // ----- Flags -----
-    const hh = state.n === 1 ? 'single' : 'family';
+    // A divorced or widowed parent buying with children under their care is a family nucleus for HDB.
+    const hh = state.n === 1 && !state.withKids ? 'single' : 'family';
+    const parent = state.n === 1 && state.withKids;
     if (hdb && B.every(b => b.cit === 'fr')) flags.push(['warn', 'Foreigners cannot buy an HDB flat. At least one buyer must be a Singapore Citizen or PR.']);
-    if (hdb && state.n === 1 && B[0].cit === 'sc' && has(B[0].age) && ages[0] < 35) flags.push(['warn', `Singles must be at least 35 to buy a resale HDB flat${sl.on && sl.coOwner ? ' — unless a divorced or widowed parent buys with children under their care' : ''}.`]);
+    if (hdb && state.n === 1 && !parent && B[0].cit === 'sc' && has(B[0].age) && ages[0] < 35) flags.push(['warn', 'Singles must be at least 35 to buy a resale HDB flat — unless a divorced or widowed parent buys with children under their care (switch that on in Buyers).']);
+    if (hdb && state.n === 1 && !parent && B[0].cit === 'spr') flags.push(['warn', 'A single PR cannot buy an HDB flat. A divorced or widowed PR parent can, with at least one child under their legal custody.']);
+    if ((hdb || ec) && parent && has(B[0].age) && ages[0] < 21) flags.push(['warn', 'Buyers must be at least 21.']);
+    if (hdb && parent) flags.push(['info', 'Divorced or widowed parent with children: HDB treats the household as a family — $16,000 HDB loan income ceiling and no age-35 rule. If ex-spouses share care and control, they must agree who lists the child on their HFE letter; a child can be on only one.']);
+    if (ec && state.n === 1 && !parent) flags.push(['warn', 'Singles cannot buy a new EC. A divorced or widowed parent with children under their care can.']);
     if (sale && sale.coOwner) flags.push(['info', `Co-owner not buying: ${money(sale.coBack)} of CPF is refunded to the co-owner's own OA and isn't available to the client. The client ${sale.shareTyped ? 'receives' : 'is assumed to receive half the cash,'} ${money(sale.clientCash)}${sale.shareTyped ? '' : ' — type the actual split if it differs'}.`]);
     if (hdbLoan) {
       if (!anySC) flags.push(['warn', 'An HDB loan needs at least one Singapore Citizen buyer. Use a bank loan.']);
