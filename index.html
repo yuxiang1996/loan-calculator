@@ -362,7 +362,7 @@
     n: 1, married: true,
     b: [blankBuyer(), blankBuyer()],
     buy: { type: 'private', mode: 'resale', price: '', val: '', lease: '', loan: 'bank', rate: '2.0', stress: '4.0', tenure: '', grants: '', keep: '', legal: null, hdbLegal: false, valFee: null, other: '', levyOn: false, levyType: '4', levySingle: false, levy: null, grantPHG: false, cashUse: '' },
-    sale: { on: false, type: 'hdb', owner: 'both', price: '', loan: '', cpf: [{ p: '', i: '' }, { p: '', i: '' }], first: true, repaid: true, hdb2nd: true, contra: true, bought: '', legal: null, hdbLegal: false, penalty: '', share: '' },
+    sale: { on: false, type: 'hdb', owner: 'both', price: '', loan: '', cpf: [{ p: '', i: '' }, { p: '', i: '' }], first: true, repaid: true, hdb2nd: true, contra: true, bought: '', legal: null, hdbLegal: false, penalty: '', share: '', coOwner: false, coP: '', coI: '' },
   });
   let state;
   try {
@@ -489,17 +489,21 @@
     const owners = saleOwners();
     const hdbLoan = state.buy.type === 'hdb' && state.buy.loan === 'hdb';
     const cpfFields = owners.map(i => `
-        ${owners.length > 1 || state.n > 1 ? `<p class="block-title f full" style="margin:6px 0 -6px">Buyer ${i + 1} CPF</p>` : ''}
+        ${owners.length > 1 || state.n > 1 || s.coOwner ? `<p class="block-title f full" style="margin:6px 0 -6px">${state.n > 1 ? `Buyer ${i + 1}` : 'Client'} CPF</p>` : ''}
         ${moneyField(`sale.cpf.${i}.p`, 'CPF principal used')}
         ${moneyField(`sale.cpf.${i}.i`, 'CPF accrued interest')}`).join('');
     el.innerHTML = `${head}
       <div class="sub-toggle">${seg('sale.type', [['hdb', 'HDB'], ['private', 'Private / EC']], 'Type of home sold')}</div>
       ${state.n > 1 ? `<div class="f" style="margin-bottom:14px"><span>Owned by</span>${wide(seg('sale.owner', [['0', 'Buyer 1'], ['1', 'Buyer 2'], ['both', 'Both']], 'Owned by'))}</div>` : ''}
-      <div class="grid2">
+      ${toggle('sale.coOwner', 'Co-owned with someone who isn\u2019t buying', 'e.g. an ex-spouse in a divorce. Their CPF refund goes back to their own OA, and the cash is split')}
+      <div class="grid2" style="margin-top:6px">
         ${moneyField('sale.price', 'Selling price')}
         ${moneyField('sale.loan', 'Outstanding loan')}
         ${cpfFields}
-        ${moneyField('sale.share', "Client's share of cash proceeds", { full: true, ph: 'All of it', hint: 'Divorce, or a co-owner who is not buying: the cash she actually receives. Blank = all' })}
+        ${s.coOwner ? `<p class="block-title f full" style="margin:6px 0 -6px">Co-owner CPF (not buying)</p>
+        ${moneyField('sale.coP', 'CPF principal used')}
+        ${moneyField('sale.coI', 'CPF accrued interest')}` : ''}
+        ${moneyField('sale.share', "Client's share of cash proceeds", { full: true, ph: s.coOwner ? 'Half' : 'All of it', hint: s.coOwner ? 'Blank = half. Type the actual split from the settlement or court order' : 'Only if she receives part of the cash. Blank = all' })}
         ${s.type === 'private' ? `<label class="f full"><span>Date bought (OTP exercised)</span>
           <input type="date" data-path="sale.bought" value="${esc(s.bought)}" max="${isoToday()}"><small>For Seller's Stamp Duty</small></label>` : ''}
       </div>
@@ -607,8 +611,14 @@
       const owedBy = B.map((_, i) => owners.includes(i) ? num(sl.cpf[i].p) + num(sl.cpf[i].i) : 0);
       const owed = sum(owedBy);
       const grossP = price - loan;
-      const cpfBack = clamp(grossP, 0, owed);
-      const backBy = owedBy.map(o => owed ? o * cpfBack / owed : 0);
+      // A co-owner who isn't buying (e.g. ex-spouse) is refunded too, into their own OA.
+      const coOwed = sl.coOwner ? num(sl.coP) + num(sl.coI) : 0;
+      const owedAll = owed + coOwed;
+      const cpfBackAll = clamp(grossP, 0, owedAll);
+      const scale = owedAll ? cpfBackAll / owedAll : 0;
+      const backBy = owedBy.map(o => o * scale);
+      const coBack = coOwed * scale;
+      const cpfBack = sum(backBy);
       const agent = price * AGENT_SALE * (1 + GST);
       const legal = sl.legal != null ? num(sl.legal) : saleLegalDefault();
       let ssd = 0, ssdRate = 0, ssdNote = '';
@@ -624,18 +634,19 @@
         }
       }
       const penalty = num(sl.penalty);
-      const cash = grossP - cpfBack - agent - legal - ssd - penalty;
+      const cash = grossP - cpfBackAll - agent - legal - ssd - penalty;
       // 2nd HDB loan: HDB counts cash proceeds before agent and legal fees (deposit included);
       // the seller keeps the higher of $25,000 or half, the rest must cut the new loan.
       // A divorce or a co-owner who isn't buying: the client only gets her share, and HDB applies
       // the rule to that share (resale terms clause 24.4(c), "depending on the manner of holding").
-      const share = has(sl.share) ? Math.max(0, num(sl.share)) : null;
+      const share = has(sl.share) ? Math.max(0, num(sl.share)) : sl.coOwner ? Math.max(0, cash) / 2 : null;
+      const shareTyped = has(sl.share);
       const clientCash = share != null ? share : cash;
-      const ruleCash = share != null ? share : Math.max(0, grossP - cpfBack);
+      const ruleCash = share != null ? share : Math.max(0, grossP - cpfBackAll);
       const rule50 = hdbLoan && sl.hdb2nd;
       const keepCash = ruleCash <= 25000 ? ruleCash : Math.max(25000, ruleCash / 2);
       const mustUse = rule50 ? Math.min(Math.max(0, clientCash), ruleCash - keepCash) : 0;
-      sale = { price, loan, owed, owedBy, cpfBack, backBy, agent, legal, ssd, ssdRate, ssdNote, penalty, cash, share, clientCash, shortCPF: owed - cpfBack, rule50, ruleCash, keepCash, mustUse };
+      sale = { price, loan, owed, owedBy, cpfBack, backBy, agent, legal, ssd, ssdRate, ssdNote, penalty, cash, share, shareTyped, clientCash, coOwner: sl.coOwner, coOwed, coBack, cpfBackAll, shortCPF: owedAll - cpfBackAll, rule50, ruleCash, keepCash, mustUse };
       if (price && grossP < 0) flags.push(['warn', `The selling price doesn't cover the outstanding loan. You will need ${money(-grossP)} in cash to redeem it.`]);
       if (price && sale.shortCPF > 0.5 && grossP >= 0) flags.push(['info', `Sale proceeds cover only ${money(cpfBack)} of the ${money(owed)} CPF to refund. For a sale at market value, CPF does not ask you to top up the shortfall.`]);
     }
@@ -816,7 +827,8 @@
     // ----- Flags -----
     const hh = state.n === 1 ? 'single' : 'family';
     if (hdb && B.every(b => b.cit === 'fr')) flags.push(['warn', 'Foreigners cannot buy an HDB flat. At least one buyer must be a Singapore Citizen or PR.']);
-    if (hdb && state.n === 1 && B[0].cit === 'sc' && has(B[0].age) && ages[0] < 35) flags.push(['warn', 'Singles must be at least 35 to buy a resale HDB flat.']);
+    if (hdb && state.n === 1 && B[0].cit === 'sc' && has(B[0].age) && ages[0] < 35) flags.push(['warn', `Singles must be at least 35 to buy a resale HDB flat${sl.on && sl.coOwner ? ' — unless a divorced or widowed parent buys with children under their care' : ''}.`]);
+    if (sale && sale.coOwner) flags.push(['info', `Co-owner not buying: ${money(sale.coBack)} of CPF is refunded to the co-owner's own OA and isn't available to the client. The client ${sale.shareTyped ? 'receives' : 'is assumed to receive half the cash,'} ${money(sale.clientCash)}${sale.shareTyped ? '' : ' — type the actual split if it differs'}.`]);
     if (hdbLoan) {
       if (!anySC) flags.push(['warn', 'An HDB loan needs at least one Singapore Citizen buyer. Use a bank loan.']);
       if (grossTotal > HDB_CEILING[hh]) flags.push(['warn', `Income of ${money(grossTotal)} is above the HDB loan ceiling of ${money(HDB_CEILING[hh])} (${hh === 'single' ? 'singles' : 'households'}, from 24 Aug 2026). Use a bank loan.`]);
@@ -941,24 +953,25 @@
       html += `<div class="card proceeds"><div class="card-head"><span>Sale proceeds</span><em>${state.sale.type === 'hdb' ? 'HDB' : 'Private'} · ${money(s.price)}</em></div>
         <table class="rows">
           ${row('Selling price', money(s.price))}
-          ${row('Less loan and CPF refund', money(-(s.loan + s.cpfBack)), '', `Loan ${money(s.loan)} · CPF ${money(s.cpfBack)}`)}
+          ${row('Less loan and CPF refund', money(-(s.loan + s.cpfBackAll)), '', `Loan ${money(s.loan)} · CPF ${money(s.cpfBack)}${s.coOwner ? ` + co-owner ${money(s.coBack)}` : ''}`)}
           ${row('Less sale fees', money(-(s.agent + s.legal + s.ssd + s.penalty)), '', [`Agent ${money(s.agent)}`, `legal ${money(s.legal)}`, s.ssd ? `SSD ${money(s.ssd)}` : '', s.penalty ? `bank penalty ${money(s.penalty)}` : ''].filter(Boolean).join(' · '))}
           ${s.share != null ? row('Cash proceeds', money(s.cash), 'total') : ''}
-          ${row(s.share != null ? "Cash to client (her share)" : 'Cash proceeds', money(s.clientCash), 'total', s.rule50 && s.mustUse > 0 ? `${money(s.mustUse)} must go into the next flat (2nd HDB loan)` : '')}
+          ${row(s.share != null ? (s.shareTyped ? "Cash to client (her share)" : "Cash to client (half)") : 'Cash proceeds', money(s.clientCash), 'total', s.rule50 && s.mustUse > 0 ? `${money(s.mustUse)} must go into the next flat (2nd HDB loan)` : '')}
           ${row('CPF available for next home', money(c.poolStart), 'total', `Incl. ${money(s.cpfBack)} refunded from the sale`)}
           ${row('Total for next home', money(Math.max(0, s.clientCash) + c.poolStart), 'total grand', `Cash ${money(Math.max(0, s.clientCash))} + CPF ${money(c.poolStart)}`)}
         </table>
         ${more('sale', `
           ${row('Selling price', money(s.price))}
           ${row('Outstanding loan', money(-s.loan))}
-          ${row('CPF refund to OA', money(-s.cpfBack), '', s.shortCPF > 0.5 ? `Of ${money(s.owed)} owed — no top-up needed` : 'Principal + accrued interest')}
+          ${row('CPF refund to OA', money(-s.cpfBackAll), '', s.shortCPF > 0.5 ? `Of ${money(s.owed + s.coOwed)} owed — no top-up needed` : 'Principal + accrued interest')}
+          ${s.coOwner ? row("Co-owner's CPF refund", money(-s.coBack), 'minor', 'To their own OA — not for the client') : ''}
           ${cpfRows}
           ${row("Seller's agent fee", money(-s.agent), '', '2% + 9% GST · cash')}
           ${row('Legal fees', money(-s.legal), '', 'Cash only — CPF cannot pay sale fees')}
           ${s.ssd ? row("Seller's Stamp Duty", money(-s.ssd), 'hl', s.ssdNote) : ''}
           ${s.penalty ? row('Bank penalty / clawback', money(-s.penalty)) : ''}
           ${row('Cash proceeds', money(s.cash), 'total')}
-          ${s.share != null ? row("Client's share", money(s.share), 'hl', 'Entered — divorce or co-owner split') : ''}
+          ${s.share != null ? row("Client's share", money(s.share), 'hl', s.shareTyped ? 'Entered — divorce or co-owner split' : 'Half — co-owner gets the other half') : ''}
           ${s.rule50 && s.mustUse > 0 ? row('of which must go into the flat', money(s.mustUse), 'minor', `2nd HDB loan rule. Client keeps ${money(s.keepCash)}`) : ''}
           <tr class="sub"><td colspan="2">CPF OA for the next home</td></tr>
           ${nextRows}
@@ -1095,10 +1108,10 @@
       sale = sec(`Sale of current home`, `
         ${L('Selling price', money(s.price))}
         ${L('Less outstanding loan', neg(s.loan))}
-        ${L('Less CPF refund to OA', neg(s.cpfBack), '', cpfNote)}
+        ${L('Less CPF refund to OA', neg(s.cpfBackAll), '', s.coOwner ? `client ${money(s.cpfBack)} · co-owner ${money(s.coBack)}` : cpfNote)}
         ${L('Less agent and legal fees', neg(fees), '', feeNote)}
         ${L('Cash proceeds', money(s.cash), 'tot big')}
-        ${s.share != null ? L("Client's share", money(s.share), 'sub', 'Divorce or co-owner split') : ''}
+        ${s.share != null ? L("Client's share", money(s.share), 'sub', s.shareTyped ? 'Divorce or co-owner split' : 'Half — co-owner gets the other half') : ''}
         ${s.rule50 && s.mustUse > 0 ? L('Must go into the next flat', money(s.mustUse), 'sub', `2nd HDB loan rule · client keeps ${money(s.keepCash)}`) : ''}`);
     }
 
